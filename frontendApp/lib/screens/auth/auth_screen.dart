@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:frontend_app/theme/app_theme.dart';
 import 'package:frontend_app/screens/main_navigation_shell.dart';
-import 'package:frontend_app/services/auth_service.dart'; // 🌐 Live Network Connector API
-import 'package:frontend_app/models/auth_model.dart';   // 🔐 Server Auth Token Model
+import 'package:frontend_app/services/auth_service.dart';
+import 'package:frontend_app/models/auth_model.dart';
+import 'package:frontend_app/services/signup_service.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -11,170 +12,231 @@ class AuthScreen extends StatefulWidget {
   State<AuthScreen> createState() => _AuthScreenState();
 }
 
-class _AuthScreenState extends State<AuthScreen> {
-  // Global form keys for managing validation states
+class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateMixin {
   final _signInFormKey = GlobalKey<FormState>();
   final _signUpFormKey = GlobalKey<FormState>();
 
-  // Text Editing Controllers to harvest string values
+  // Sign In controllers
   final _signInEmailController = TextEditingController();
   final _signInPasswordController = TextEditingController();
 
-  final _signUpNameController = TextEditingController();
+  // Sign Up controllers
+  final _signUpFirstNameController = TextEditingController();
+  final _signUpLastNameController = TextEditingController();
+  final _signUpDisplayNameController = TextEditingController();
   final _signUpEmailController = TextEditingController();
   final _signUpPasswordController = TextEditingController();
 
+  // Gender & birth date state
+  String? _selectedGender;
+  DateTime? _selectedBirthDate;
+
+  late TabController _tabController;
   bool _isLoading = false;
 
   @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
   void dispose() {
-    // Memory leak mitigation: Clean up controllers on widget destruction
     _signInEmailController.dispose();
     _signInPasswordController.dispose();
-    _signUpNameController.dispose();
+    _signUpFirstNameController.dispose();
+    _signUpLastNameController.dispose();
+    _signUpDisplayNameController.dispose();
     _signUpEmailController.dispose();
     _signUpPasswordController.dispose();
+    _tabController.dispose();
     super.dispose();
   }
 
-  // Live validation and token verification network transaction handshake
   void _submitAuthSession(GlobalKey<FormState> activeFormKey) async {
     if (activeFormKey.currentState!.validate()) {
-      setState(() {
-        _isLoading = true;
-      });
+      setState(() => _isLoading = true);
 
       bool isSignIn = activeFormKey == _signInFormKey;
-      dynamic authResult;
 
       if (isSignIn) {
-        // 🔐 Execute actual HTTP routing logic out to port 9085
-        authResult = await AuthService.login(
+        final authResult = await AuthService.login(
           _signInEmailController.text.trim(),
           _signInPasswordController.text,
         );
+
+        if (mounted) {
+          setState(() => _isLoading = false);
+          if (authResult != null && authResult is AuthResponse) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => const MainNavigationShell()),
+            );
+          } else {
+            _showStatusSnackbar('Authentication failed. Invalid credentials or server offline.', isError: true);
+          }
+        }
       } else {
-        // Sign Up placeholder network simulation loop
-        await Future.delayed(const Duration(milliseconds: 1500));
-        authResult = null;
-      }
+        // Extra validation for fields not covered by TextFormField validators
+        if (_selectedGender == null) {
+          setState(() => _isLoading = false);
+          _showStatusSnackbar('Please select your gender.', isError: true);
+          return;
+        }
+        if (_selectedBirthDate == null) {
+          setState(() => _isLoading = false);
+          _showStatusSnackbar('Please select your date of birth.', isError: true);
+          return;
+        }
 
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
+        final birthDateStr =
+            '${_selectedBirthDate!.year}-${_selectedBirthDate!.month.toString().padLeft(2, '0')}-${_selectedBirthDate!.day.toString().padLeft(2, '0')}';
 
-        // 🛑 SECURITY GATE: Only transition inside if we have a verifiable server AuthResponse object
-        if (authResult != null && authResult is AuthResponse) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const MainNavigationShell()),
-          );
-        } else {
-          // ❌ Explicitly lock the UI and block passage while displaying a danger warning snackbar
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              backgroundColor: AppTheme.danger,
-              behavior: SnackBarBehavior.floating,
-              content: Text(
-                'Authentication failed. Invalid credentials or server offline.',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-              ),
-            ),
-          );
+        final registrationSuccess = await SignupService.registerUser(
+          email: _signUpEmailController.text.trim(),
+          password: _signUpPasswordController.text,
+          displayName: _signUpDisplayNameController.text.trim(),
+          firstName: _signUpFirstNameController.text.trim(),
+          lastName: _signUpLastNameController.text.trim(),
+          gender: _selectedGender!,
+          birthDate: birthDateStr,
+          defaultActivityVisibilityId: 1,
+        );
+
+        if (mounted) {
+          setState(() => _isLoading = false);
+          if (registrationSuccess) {
+            _tabController.animateTo(0);
+            _signInEmailController.text = _signUpEmailController.text;
+            _showStatusSnackbar('Account provisioned successfully! Please sign in.', isError: false);
+            _signUpEmailController.clear();
+            _signUpFirstNameController.clear();
+            _signUpLastNameController.clear();
+            _signUpDisplayNameController.clear();
+            _signUpPasswordController.clear();
+            setState(() {
+              _selectedGender = null;
+              _selectedBirthDate = null;
+            });
+          } else {
+            _showStatusSnackbar('Registration aborted. User identity profile exists or network dropped.', isError: true);
+          }
         }
       }
     }
   }
 
-  // Standard RegEx pattern check helper for structural validation criteria
+  void _showStatusSnackbar(String message, {required bool isError}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: isError ? AppTheme.danger : Colors.green,
+        behavior: SnackBarBehavior.floating,
+        content: Text(
+          message,
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickBirthDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime(now.year - 18, now.month, now.day),
+      firstDate: DateTime(1920),
+      lastDate: DateTime(now.year - 10, now.month, now.day),
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: const ColorScheme.dark(
+            primary: AppTheme.primaryOrange,
+            surface: AppTheme.darkCard,
+          ),
+        ),
+        child: child!,
+      ),
+    );
+    if (picked != null) {
+      setState(() => _selectedBirthDate = picked);
+    }
+  }
+
   String? _validateEmail(String? value) {
-    if (value == null || value.trim().isEmpty) {
-      return 'Please enter your email address';
-    }
+    if (value == null || value.trim().isEmpty) return 'Please enter your email address';
     final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
-    if (!emailRegex.hasMatch(value)) {
-      return 'Please enter a valid email format';
-    }
+    if (!emailRegex.hasMatch(value)) return 'Please enter a valid email format';
     return null;
   }
 
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        backgroundColor: AppTheme.darkBg,
-        body: SafeArea(
-          child: Stack(
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 40),
-                    const Text(
-                      'Welcome',
-                      style: TextStyle(color: AppTheme.textWhite, fontSize: 32, fontWeight: FontWeight.bold),
+    return Scaffold(
+      backgroundColor: AppTheme.darkBg,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 40),
+                  const Text(
+                    'Welcome',
+                    style: TextStyle(color: AppTheme.textWhite, fontSize: 32, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Sign in to track your operational metrics',
+                    style: TextStyle(color: AppTheme.textLight, fontSize: 15),
+                  ),
+                  const SizedBox(height: 32),
+                  Container(
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: AppTheme.darkCard,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.white10),
                     ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Sign in to track your operational metrics',
-                      style: TextStyle(color: AppTheme.textLight, fontSize: 15),
-                    ),
-                    const SizedBox(height: 32),
-
-                    // Navigation tab header selector boundary container layout elements
-                    Container(
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: AppTheme.darkCard,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.white10),
+                    child: TabBar(
+                      controller: _tabController,
+                      indicatorSize: TabBarIndicatorSize.tab,
+                      indicator: BoxDecoration(
+                        color: AppTheme.primaryOrange,
+                        borderRadius: BorderRadius.circular(10),
                       ),
-                      child: TabBar(
-                        indicatorSize: TabBarIndicatorSize.tab,
-                        indicator: BoxDecoration(
-                          color: AppTheme.primaryOrange,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        labelColor: Colors.white,
-                        unselectedLabelColor: AppTheme.textLight,
-                        labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                        tabs: const [
-                          Tab(text: 'Sign In'),
-                          Tab(text: 'Sign Up'),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-
-                    // Multi-view form pane rendering switcher
-                    Expanded(
-                      child: TabBarView(
-                        children: [
-                          _buildSignInFormView(),
-                          _buildSignUpFormView(),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              // Full screen loading indicator modal backdrop block overlay tracker interceptor
-              if (_isLoading)
-                Container(
-                  color: Colors.black54,
-                  child: const Center(
-                    child: CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryOrange),
+                      labelColor: Colors.white,
+                      unselectedLabelColor: AppTheme.textLight,
+                      labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                      tabs: const [
+                        Tab(text: 'Sign In'),
+                        Tab(text: 'Sign Up'),
+                      ],
                     ),
                   ),
+                  const SizedBox(height: 24),
+                  Expanded(
+                    child: TabBarView(
+                      controller: _tabController,
+                      children: [
+                        _buildSignInFormView(),
+                        _buildSignUpFormView(),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (_isLoading)
+              Container(
+                color: Colors.black54,
+                child: const Center(
+                  child: CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryOrange),
+                  ),
                 ),
-            ],
-          ),
+              ),
+          ],
         ),
       ),
     );
@@ -224,16 +286,43 @@ class _AuthScreenState extends State<AuthScreen> {
       child: ListView(
         physics: const ClampingScrollPhysics(),
         children: [
+          // First Name
           _buildTextFormField(
-            controller: _signUpNameController,
-            hintText: 'Full Name',
+            controller: _signUpFirstNameController,
+            hintText: 'First Name',
             icon: Icons.person_outline_rounded,
             validator: (value) {
-              if (value == null || value.trim().isEmpty) return 'Please enter your name';
+              if (value == null || value.trim().isEmpty) return 'Please enter your first name';
               return null;
             },
           ),
           const SizedBox(height: 16),
+
+          // Last Name
+          _buildTextFormField(
+            controller: _signUpLastNameController,
+            hintText: 'Last Name',
+            icon: Icons.person_outline_rounded,
+            validator: (value) {
+              if (value == null || value.trim().isEmpty) return 'Please enter your last name';
+              return null;
+            },
+          ),
+          const SizedBox(height: 16),
+
+          // Display Name
+          _buildTextFormField(
+            controller: _signUpDisplayNameController,
+            hintText: 'Display Name',
+            icon: Icons.badge_outlined,
+            validator: (value) {
+              if (value == null || value.trim().isEmpty) return 'Please enter a display name';
+              return null;
+            },
+          ),
+          const SizedBox(height: 16),
+
+          // Email
           _buildTextFormField(
             controller: _signUpEmailController,
             hintText: 'Email Address',
@@ -241,6 +330,8 @@ class _AuthScreenState extends State<AuthScreen> {
             validator: _validateEmail,
           ),
           const SizedBox(height: 16),
+
+          // Password
           _buildTextFormField(
             controller: _signUpPasswordController,
             hintText: 'Password',
@@ -252,8 +343,71 @@ class _AuthScreenState extends State<AuthScreen> {
               return null;
             },
           ),
+          const SizedBox(height: 16),
+
+          // Gender Dropdown
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: AppTheme.darkCard,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white10),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: _selectedGender,
+                dropdownColor: AppTheme.darkCard,
+                hint: Row(
+                  children: const [
+                    Icon(Icons.wc_outlined, color: AppTheme.textLight, size: 20),
+                    SizedBox(width: 12),
+                    Text('Gender', style: TextStyle(color: AppTheme.textLight, fontSize: 14)),
+                  ],
+                ),
+                icon: const Icon(Icons.keyboard_arrow_down, color: AppTheme.textLight),
+                items: ['MALE', 'FEMALE', 'OTHER'].map((g) {
+                  return DropdownMenuItem(
+                    value: g,
+                    child: Text(g, style: const TextStyle(color: AppTheme.textWhite)),
+                  );
+                }).toList(),
+                onChanged: (value) => setState(() => _selectedGender = value),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Date of Birth picker
+          GestureDetector(
+            onTap: _pickBirthDate,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+              decoration: BoxDecoration(
+                color: AppTheme.darkCard,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white10),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.calendar_today_outlined, color: AppTheme.textLight, size: 20),
+                  const SizedBox(width: 12),
+                  Text(
+                    _selectedBirthDate == null
+                        ? 'Date of Birth'
+                        : '${_selectedBirthDate!.year}-${_selectedBirthDate!.month.toString().padLeft(2, '0')}-${_selectedBirthDate!.day.toString().padLeft(2, '0')}',
+                    style: TextStyle(
+                      color: _selectedBirthDate == null ? AppTheme.textLight : AppTheme.textWhite,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
           const SizedBox(height: 24),
+
           _buildActionButton('CREATE ACCOUNT', () => _submitAuthSession(_signUpFormKey)),
+          const SizedBox(height: 24),
         ],
       ),
     );
@@ -271,7 +425,7 @@ class _AuthScreenState extends State<AuthScreen> {
       obscureText: isObscure,
       style: const TextStyle(color: AppTheme.textWhite),
       validator: validator,
-      autovalidateMode: AutovalidateMode.onUserInteraction, // Dynamic inline tracking validation error display
+      autovalidateMode: AutovalidateMode.onUserInteraction,
       decoration: InputDecoration(
         hintText: hintText,
         hintStyle: const TextStyle(color: AppTheme.textLight, fontSize: 14),

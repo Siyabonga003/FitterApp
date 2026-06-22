@@ -1,10 +1,9 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart'; // Session Storage Utility
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:frontend_app/theme/app_theme.dart';
 import 'package:frontend_app/models/activity_model.dart';
 import 'package:frontend_app/widgets/activity_card.dart';
+import 'package:frontend_app/services/activity_service.dart'; // ✅ Use ActivityService
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -22,34 +21,17 @@ class _HomeScreenState extends State<HomeScreen> {
     _activitiesFuture = fetchActivities();
   }
 
-  // 🌐 Production WebFlux Endpoint Integrator (Dynamic Session Mapping)
-  // 🌐 Production WebFlux Endpoint Integrator (Dynamic Session Mapping)
   Future<List<Activity>> fetchActivities() async {
-    try {
-      // 🔐 Extract the active identity from storage
-      final prefs = await SharedPreferences.getInstance();
-      String? userId = prefs.getString('userId');
+    final prefs = await SharedPreferences.getInstance();
+    final String? userId = prefs.getString('userId');
 
-      // 🛠️ TEMPORARY OVERRIDE OVERLAY: If no one is logged in, force a real test user ID context
-      // Replace this string with a real User ID record present in your Postgres "users" table
-      if (userId == null || userId.isEmpty) {
-        userId = "1"; // or your backend's default UUID string format
-      }
-
-      // Live Spring Boot route customized with a verifiable user row reference
-      final url = Uri.parse('http://10.0.2.2:9085/api/v1/activities/user/$userId');;
-      final response = await http.get(url).timeout(const Duration(seconds: 5));
-
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> pagedResponse = json.decode(response.body);
-        final List<dynamic> jsonList = pagedResponse['content'] ?? []; // Unpack WebFlux PagedResponse array container
-        return jsonList.map((data) => Activity.fromJson(data)).toList();
-      } else {
-        throw Exception('Server error: ${response.statusCode}');
-      }
-    } catch (e) {
-      throw Exception('Failed to reach server: Check endpoint configuration');
+    if (userId == null || userId.isEmpty) {
+      throw Exception('No userId found in session — please log in again');
     }
+
+    // ✅ Use ActivityService which correctly attaches the Bearer token
+    final List<dynamic> data = await ActivityService.getActivities(userId);
+    return data.map((json) => Activity.fromJson(json)).toList();
   }
 
   @override
@@ -61,7 +43,7 @@ class _HomeScreenState extends State<HomeScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // 1. TOP HEADER APP BAR (Search & Notifications Blueprint)
+            // TOP HEADER
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
               child: Row(
@@ -98,13 +80,17 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
 
-            // 2. DYNAMIC NETWORK ACTIVITY STREAM FEED LAYER
+            // ACTIVITY FEED
             Expanded(
               child: FutureBuilder<List<Activity>>(
                 future: _activitiesFuture,
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryNeon)));
+                    return const Center(
+                      child: CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryNeon),
+                      ),
+                    );
                   }
 
                   if (snapshot.hasError) {
@@ -114,13 +100,28 @@ class _HomeScreenState extends State<HomeScreen> {
                         children: [
                           const Icon(Icons.wifi_off_rounded, size: 48, color: AppTheme.textLight),
                           const SizedBox(height: 12),
-                          Text('Could not fetch live feed', style: TextStyle(color: isDark ? AppTheme.textWhite : AppTheme.textDark, fontWeight: FontWeight.bold)),
+                          Text(
+                            'Could not fetch live feed',
+                            style: TextStyle(
+                              color: isDark ? AppTheme.textWhite : AppTheme.textDark,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '${snapshot.error}',
+                            style: const TextStyle(color: AppTheme.textLight, fontSize: 12),
+                            textAlign: TextAlign.center,
+                          ),
                           const SizedBox(height: 16),
                           ElevatedButton(
                             style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryNeon),
                             onPressed: () => setState(() => _activitiesFuture = fetchActivities()),
-                            child: const Text('Retry Connection', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-                          )
+                            child: const Text(
+                              'Retry Connection',
+                              style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+                            ),
+                          ),
                         ],
                       ),
                     );
@@ -128,7 +129,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
                   final activities = snapshot.data ?? [];
                   if (activities.isEmpty) {
-                    return const Center(child: Text('No activities logged yet.', style: TextStyle(color: AppTheme.textLight)));
+                    return const Center(
+                      child: Text('No activities logged yet.', style: TextStyle(color: AppTheme.textLight)),
+                    );
                   }
 
                   return RefreshIndicator(
@@ -162,7 +165,13 @@ class _HomeScreenState extends State<HomeScreen> {
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: AppTheme.primaryNeon,
         icon: const Icon(Icons.add, color: Colors.black),
-        label: Text('Start Activity', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.black, fontWeight: FontWeight.bold)),
+        label: Text(
+          'Start Activity',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: Colors.black,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         onPressed: () {},
       ),
     );
