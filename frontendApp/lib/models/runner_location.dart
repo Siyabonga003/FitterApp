@@ -47,8 +47,6 @@ class RunnerLocation {
       trail: newTrail,
     );
   }
-
-  // Formats pace as mm:ss /km for display
   String get formattedPace {
     if (paceKmPerMin <= 0) return '--:-- /km';
     final totalSeconds = (paceKmPerMin * 60).round();

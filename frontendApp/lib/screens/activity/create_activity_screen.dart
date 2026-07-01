@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:frontend_app/theme/app_theme.dart';
 import 'package:frontend_app/services/activity_service.dart';
+import 'package:frontend_app/screens/activity/active_run_screen.dart';
 
 class CreateActivityScreen extends StatefulWidget {
   const CreateActivityScreen({super.key});
@@ -17,9 +18,9 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
   bool _isLoading = false;
 
   final List<Map<String, dynamic>> _activityTypes = [
-    {'id': 1, 'label': ' Running'},
-    {'id': 2, 'label': ' Jogging'},
-    {'id': 3, 'label': ' Walking'},
+    {'id': 1, 'label': 'Running'},
+    {'id': 2, 'label': 'Jogging'},
+    {'id': 3, 'label': 'Walking'},
   ];
 
   final List<Map<String, dynamic>> _visibilityOptions = [
@@ -49,8 +50,30 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
       });
 
       if (result != null && mounted) {
-        _showSnackbar('Activity started!', isError: false);
-        Navigator.pop(context, true);
+        final activityId = result['activityId'] as String?;
+        final activityLabel = _activityTypes
+            .firstWhere((t) => t['id'] == _selectedTypeId)['label'] as String;
+
+        if (activityId == null) {
+          _showSnackbar('Server error: no activity ID returned.', isError: true);
+          return;
+        }
+
+        // ✅ Navigate to ActiveRunScreen with the real activityId and userId
+        final finished = await Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ActiveRunScreen(
+              activityId: activityId,
+              userId: userId,
+              activityType: activityLabel,
+            ),
+          ),
+        );
+
+        if (finished == true) {
+          Navigator.pop(context, true); // Refresh home feed
+        }
       } else {
         _showSnackbar('Failed to start activity. Try again.', isError: true);
       }

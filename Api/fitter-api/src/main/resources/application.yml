@@ -1,0 +1,154 @@
+file:
+  storage:
+    base-path: uploads/profile-pictures
+    max-size: 5
+    max-files-per-request: 20
+    allowed-mime-types: "image/jpeg,image/png,application/pdf"
+spring:
+  application:
+    name: fitter
+  profiles:
+    active: dev
+  main:
+    web-application-type: reactive
+  webflux:
+    problemdetails:
+      enabled: true
+    multipart:
+      max-in-memory-size: 2MB
+      max-disk-usage-per-part: 5MB
+      max-parts: 10
+  http:
+    codecs:
+      max-in-memory-size: 2MB
+  cache:
+    type: caffeine
+    caffeine:
+      spec: "maximumSize=1000,expireAfterAccess=60s,initialCapacity=1000"
+  sql:
+    init:
+      mode: never
+  websocket:
+    max-text-message-size: 65536  
+    max-binary-message-size: 65536 
+logging:
+  level:
+    app.run.fitter: INFO
+    org.springframework.security: DEBUG
+    org.springframework.security.oauth2: DEBUG
+    org.springframework.web.reactive.socket: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: when-authorized
+      show-components: always
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+      percentiles:
+        http.server.requests: 0.5, 0.75, 0.95, 0.99
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+firebase:
+  service-account-path: classpath:firebase-service-account.json 
+server:
+  port: 9085
+---
+spring:
+  config:
+    activate:
+      on-profile: dev
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: http://localhost:8080/realms/FitterAuth/protocol/openid-connect/certs
+  keycloak:
+    url: http://localhost:8080
+    client-id: fitter-app
+    admin-id: fitter-admin
+    admin-secret: omAPQmtqZWVQ3ge6qugr3AOITE0BU7Iq
+    client-realm: FitterAuth
+    default-role: default-roles-myrealm
+  r2dbc:
+    username: postgres
+    password: Password123!
+    url: r2dbc:postgresql://localhost:5433/fitter_db
+    pool:
+      initial-size: 10
+      max-size: 50
+      max-idle-time: 30m
+      validation-query: SELECT 1
+  flyway:
+    url: jdbc:postgresql://localhost:5433/fitter_db
+    user: postgres
+    password: Password123!
+    locations: classpath:db/migration
+    enabled: true
+    baseline-on-migrate: true
+    validate-on-migrate: true
+    clean-disabled: true
+  cors:
+    allowed-origins: "http://localhost:3000"
+    allowed-methods: GET,POST,PUT,PATCH,DELETE
+    allowed-headers: "*"
+    allow-credentials: true
+---
+server:
+  forward-headers-strategy: framework
+spring:
+  config:
+    activate:
+      on-profile: prod
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${KEYCLOAK_BASE_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/certs
+  keycloak:
+    url: ${KEYCLOAK_BASE_URL}
+    client-id: ${KEYCLOAK_CLIENT_ID}
+    admin-id: ${KEYCLOAK_ADMIN_ID}
+    admin-secret: ${KEYCLOAK_ADMIN_SECRET}
+    client-realm: ${KEYCLOAK_REALM}
+    default-role: ${KEYCLOAK_DEFAULT_ROLE}
+  r2dbc:
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+    url: r2dbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}
+    pool:
+      initial-size: ${DB_POOL_INITIAL_SIZE}
+      max-size: ${DB_POOL_MAX_SIZE}
+      max-idle-time: ${DB_POOL_MAX_IDLE_TIME}
+      validation-query: SELECT 1
+  flyway:
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}
+    user: ${DB_USER}
+    password: ${DB_PASSWORD}
+    locations: classpath:db/migration
+    enabled: true
+    baseline-on-migrate: true
+    validate-on-migrate: true
+    clean-disabled: true
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS}
+    allowed-methods: ${CORS_ALLOWED_METHODS}
+    allowed-headers: ${CORS_ALLOWED_HEADERS}
+    allow-credentials: ${CORS_ALLOW_CREDENTIALS}

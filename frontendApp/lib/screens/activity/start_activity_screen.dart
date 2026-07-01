@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:frontend_app/theme/app_theme.dart';
+import 'package:frontend_app/services/activity_service.dart';
 import 'package:frontend_app/screens/activity/active_run_screen.dart';
 
 class StartActivityScreen extends StatefulWidget {
@@ -11,12 +13,76 @@ class StartActivityScreen extends StatefulWidget {
 
 class _StartActivityScreenState extends State<StartActivityScreen> {
   String _selectedActivity = 'Running';
+  int _selectedTypeId = 2; // Default: Running
+  bool _isLoading = false;
 
   final List<Map<String, dynamic>> _activities = [
-    {'name': 'Walking', 'icon': Icons.directions_walk_rounded, 'emoji': '🚶'},
-    {'name': 'Running', 'icon': Icons.directions_run_rounded, 'emoji': '🏃'},
-    {'name': 'Jogging', 'icon': Icons.run_circle_rounded, 'emoji': '🏃‍♂️'},
+    {'name': 'Walking', 'icon': Icons.directions_walk_rounded, 'emoji': '🚶', 'typeId': 3},
+    {'name': 'Running', 'icon': Icons.directions_run_rounded, 'emoji': '🏃', 'typeId': 2},
+    {'name': 'Jogging', 'icon': Icons.run_circle_rounded, 'emoji': '🏃‍♂️', 'typeId': 1},
   ];
+
+  Future<void> _startActivity() async {
+    setState(() => _isLoading = true);
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final userId = prefs.getString('userId');
+
+      if (userId == null) {
+        _showSnackbar('Session expired. Please log in again.', isError: true);
+        return;
+      }
+
+      final result = await ActivityService.createActivity(userId, {
+        'activityTypeId': _selectedTypeId,
+        'startedAt': DateTime.now().toUtc().toIso8601String(),
+        'visibilityId': 1, // Public by default
+        'routeVisible': true,
+        'isLive': true,
+      });
+
+      if (result != null && mounted) {
+        final activityId = result['activityId'] as String?;
+
+        if (activityId == null) {
+          _showSnackbar('Server error: no activity ID returned.', isError: true);
+          return;
+        }
+
+        // ✅ Navigate to ActiveRunScreen with the real activityId and userId
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ActiveRunScreen(
+              activityId: activityId,
+              userId: userId,
+              activityType: _selectedActivity,
+            ),
+          ),
+        );
+      } else {
+        _showSnackbar('Failed to start activity. Try again.', isError: true);
+      }
+    } catch (e) {
+      _showSnackbar('Error: $e', isError: true);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _showSnackbar(String message, {required bool isError}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: isError ? AppTheme.danger : Colors.green,
+        behavior: SnackBarBehavior.floating,
+        content: Text(
+          message,
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -33,7 +99,6 @@ class _StartActivityScreenState extends State<StartActivityScreen> {
         child: Column(
           children: [
             const SizedBox(height: 20),
-            // Large Cards Layout
             Expanded(
               child: ListView.builder(
                 itemCount: _activities.length,
@@ -46,7 +111,8 @@ class _StartActivityScreenState extends State<StartActivityScreen> {
                     child: GestureDetector(
                       onTap: () {
                         setState(() {
-                          _selectedActivity = activity['name'];
+                          _selectedActivity = activity['name'] as String;
+                          _selectedTypeId = activity['typeId'] as int;
                         });
                       },
                       child: AnimatedContainer(
@@ -60,7 +126,10 @@ class _StartActivityScreenState extends State<StartActivityScreen> {
                             width: isSelected ? 2 : 1,
                           ),
                           boxShadow: isSelected
-                              ? [BoxShadow(color: AppTheme.primaryOrange.withOpacity(0.15), blurRadius: 12, offset: const Offset(0, 4))]
+                              ? [BoxShadow(
+                              color: AppTheme.primaryOrange.withOpacity(0.15),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4))]
                               : [],
                         ),
                         child: Row(
@@ -68,11 +137,13 @@ class _StartActivityScreenState extends State<StartActivityScreen> {
                             Container(
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: isSelected ? AppTheme.primaryOrange.withOpacity(0.1) : Colors.white,
+                                color: isSelected
+                                    ? AppTheme.primaryOrange.withOpacity(0.1)
+                                    : Colors.white,
                                 shape: BoxShape.circle,
                               ),
                               child: Icon(
-                                activity['icon'],
+                                activity['icon'] as IconData,
                                 size: 32,
                                 color: isSelected ? AppTheme.primaryOrange : AppTheme.textWhite,
                               ),
@@ -87,7 +158,8 @@ class _StartActivityScreenState extends State<StartActivityScreen> {
                               ),
                             ),
                             if (isSelected)
-                              const Icon(Icons.check_circle_rounded, color: AppTheme.primaryOrange, size: 26),
+                              const Icon(Icons.check_circle_rounded,
+                                  color: AppTheme.primaryOrange, size: 26),
                           ],
                         ),
                       ),
@@ -97,7 +169,6 @@ class _StartActivityScreenState extends State<StartActivityScreen> {
               ),
             ),
 
-            // Big Action Start Button
             SafeArea(
               child: SizedBox(
                 width: double.infinity,
@@ -108,15 +179,11 @@ class _StartActivityScreenState extends State<StartActivityScreen> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     elevation: 4,
                   ),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => ActiveRunScreen(activityType: _selectedActivity),
-                      ),
-                    );
-                  },
-                  child: Text(
+                  onPressed: _isLoading ? null : _startActivity,
+                  child: _isLoading
+                      ? const CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white))
+                      : Text(
                     'START NOW',
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
                       color: Colors.white,
