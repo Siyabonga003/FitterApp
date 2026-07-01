@@ -5,8 +5,8 @@ import 'package:frontend_app/models/auth_model.dart';
 
 class AuthService {
   static const String keycloakTokenUrl =
-      'http://10.0.2.2:8080/realms/FitterAuth/protocol/openid-connect/token';
-  static const String backendBaseUrl = 'http://10.0.2.2:9085';
+      'http://192.168.1.127:8080/realms/FitterAuth/protocol/openid-connect/token';
+  static const String backendBaseUrl = 'http://192.168.1.127:9085';
 
   static Future<AuthResponse?> login(String email, String password) async {
     final url = Uri.parse(keycloakTokenUrl);
@@ -31,7 +31,7 @@ class AuthService {
         final String kcUserId = payload['sub'] ?? '';
         final String username = payload['preferred_username'] ?? email;
 
-        // ✅ Fetch the DB userId using the kcUserId from the JWT
+
         final String? dbUserId = await _fetchDbUserId(kcUserId, accessToken);
 
         if (dbUserId == null) {
@@ -41,7 +41,7 @@ class AuthService {
 
         final authData = AuthResponse(
           token: accessToken,
-          userId: dbUserId,   // ✅ Store DB userId, not kcUserId
+          userId: dbUserId,
           username: username,
         );
 
@@ -49,7 +49,7 @@ class AuthService {
         await prefs.setString('token', authData.token);
         await prefs.setString('userId', authData.userId);
         await prefs.setString('username', authData.username);
-        await prefs.setString('kcUserId', kcUserId); // ✅ Also store kcUserId separately
+        await prefs.setString('kcUserId', kcUserId);
 
         return authData;
       } else {
@@ -62,7 +62,6 @@ class AuthService {
     return null;
   }
 
-  // ✅ Fetch the DB userId by calling the backend with the kcUserId
   static Future<String?> _fetchDbUserId(String kcUserId, String token) async {
     try {
       final response = await http.get(

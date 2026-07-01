@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart'; // add this
 import 'package:frontend_app/screens/auth/splash_screen.dart';
 import 'package:frontend_app/theme/app_theme.dart';
-import 'package:frontend_app/screens/auth/splash_screen.dart';
-
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const FitterApp());
+  runApp(
+    const ProviderScope(
+      child: FitterApp(),
+    ),
+  );
 }
 
 class FitterApp extends StatelessWidget {

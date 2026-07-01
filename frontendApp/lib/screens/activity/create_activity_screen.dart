@@ -89,7 +89,6 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Activity Type
             const Text('Activity Type', style: TextStyle(color: AppTheme.textLight, fontSize: 13)),
             const SizedBox(height: 8),
             Container(
@@ -118,7 +117,6 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
             ),
             const SizedBox(height: 20),
 
-            // Visibility
             const Text('Visibility', style: TextStyle(color: AppTheme.textLight, fontSize: 13)),
             const SizedBox(height: 8),
             Container(
@@ -147,7 +145,6 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
             ),
             const SizedBox(height: 20),
 
-            // Route Visible Toggle
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
               decoration: BoxDecoration(
@@ -168,7 +165,6 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
 
             const Spacer(),
 
-            // Start Button
             SizedBox(
               width: double.infinity,
               height: 52,

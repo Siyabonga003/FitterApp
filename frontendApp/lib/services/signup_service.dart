@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class SignupService {
-  static const String baseUrl = 'http://10.0.2.2:9085';
+  static const String baseUrl = 'http://192.168.1.127:9085';
 
   static Future<bool> registerUser({
     required String email,
@@ -11,7 +11,7 @@ class SignupService {
     required String firstName,
     required String lastName,
     required String gender,
-    required String birthDate, // format: "yyyy-MM-dd"
+    required String birthDate,
     String? bio,
     int defaultActivityVisibilityId = 1,
     bool defaultRouteVisible = true,

@@ -176,7 +176,7 @@ class _HomeScreenState extends State<HomeScreen> {
             MaterialPageRoute(builder: (_) => const CreateActivityScreen()),
           );
           if (created == true) {
-            setState(() => _activitiesFuture = fetchActivities()); // ✅ Refresh feed
+            setState(() => _activitiesFuture = fetchActivities()); // Refresh feed
           }
         },
       ),

@@ -1,3 +1,5 @@
+import 'package:latlong2/latlong.dart';
+
 class RunnerLocation {
   final String userId;
   final String displayName;
@@ -6,6 +8,7 @@ class RunnerLocation {
   final double paceKmPerMin;
   final double distanceKm;
   final bool sharingLive;
+  final List<LatLng> trail;
 
   RunnerLocation({
     required this.userId,
@@ -15,6 +18,7 @@ class RunnerLocation {
     required this.paceKmPerMin,
     required this.distanceKm,
     required this.sharingLive,
+    this.trail = const [],
   });
 
   factory RunnerLocation.fromJson(Map<String, dynamic> json) {
@@ -26,6 +30,21 @@ class RunnerLocation {
       paceKmPerMin: (json['paceKmPerMin'] ?? 0).toDouble(),
       distanceKm: (json['distanceKm'] ?? 0).toDouble(),
       sharingLive: json['sharingLive'] ?? false,
+      trail: const [],
+    );
+  }
+
+  RunnerLocation withNewPosition(double lat, double lng) {
+    final newTrail = [...trail, LatLng(lat, lng)];
+    return RunnerLocation(
+      userId: userId,
+      displayName: displayName,
+      latitude: lat,
+      longitude: lng,
+      paceKmPerMin: paceKmPerMin,
+      distanceKm: distanceKm,
+      sharingLive: sharingLive,
+      trail: newTrail,
     );
   }
 

@@ -1,12 +1,17 @@
 import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend_app/models/runner_location.dart';
-import 'package:frontend_app/services/auth_service.dart'; // add this
+import 'package:frontend_app/services/auth_service.dart';
 import 'package:frontend_app/services/websocket_service.dart';
+import 'package:frontend_app/models/runner_location.dart';
+import 'package:frontend_app/providers/badge_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 
 class RunnerLocationNotifier extends Notifier<Map<String, RunnerLocation>> {
   final WebSocketService _wsService = WebSocketService();
+
+  String _myDisplayName = '';
 
   @override
   Map<String, RunnerLocation> build() {
@@ -15,15 +20,16 @@ class RunnerLocationNotifier extends Notifier<Map<String, RunnerLocation>> {
   }
 
   Future<void> initialize() async {
-    // Fetch token from SharedPreferences — set during Keycloak login
     final authToken = await AuthService.getToken();
     if (authToken == null) {
       print('No auth token found — user may not be logged in');
       return;
     }
 
-    await _loadInitialFriendLocations(authToken);
+    final prefs = await SharedPreferences.getInstance();
+    _myDisplayName = prefs.getString('username') ?? 'me';
 
+    await _loadInitialFriendLocations(authToken);
     _wsService.connect(
       authToken: authToken,
       onMessage: (message) {
@@ -35,8 +41,18 @@ class RunnerLocationNotifier extends Notifier<Map<String, RunnerLocation>> {
             return;
           }
 
-          final location = RunnerLocation.fromJson(json);
-          state = {...state, location.userId: location};
+          if (json['event'] == 'badge_awarded') {
+            ref.read(badgeProvider.notifier).onBadgeAwarded(json);
+            return;
+          }
+
+          final incoming = RunnerLocation.fromJson(json);
+          final existing = state[incoming.userId];
+          final updated = existing != null
+          ? existing.withNewPosition(incoming.latitude, incoming.longitude)
+          : incoming;
+
+          state = {...state, incoming.userId: updated};
         } catch (e) {
           print('Failed to parse WebSocket message: $e');
         }
@@ -44,10 +60,12 @@ class RunnerLocationNotifier extends Notifier<Map<String, RunnerLocation>> {
     );
   }
 
+  String get myDisplayName => _myDisplayName;
+
   Future<void> _loadInitialFriendLocations(String authToken) async {
     try {
       final response = await http.get(
-        Uri.parse('http://10.0.2.2:9085/api/live/friends'),
+        Uri.parse('http://192.168.1.127:9085/api/live/friends'),
         headers: {'Authorization': 'Bearer $authToken'},
       );
 
@@ -68,12 +86,11 @@ class RunnerLocationNotifier extends Notifier<Map<String, RunnerLocation>> {
   }
 
   Future<void> sendCheer(String targetUserId) async {
-    // Fetch token fresh for each request in case it was refreshed
     final authToken = await AuthService.getToken();
     if (authToken == null) return;
 
     await http.post(
-      Uri.parse('http://10.0.2.2:9085/api/cheer/$targetUserId'),
+      Uri.parse('http://192.168.1.127:9085/api/cheer/$targetUserId'),
       headers: {'Authorization': 'Bearer $authToken'},
     );
   }

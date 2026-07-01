@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:frontend_app/models/group_model.dart';
 
 class GroupsApiService {
-  static const String _baseUrl = 'http://10.0.2.2:8080/api/v1/groups';
+  static const String _baseUrl = 'http://192.168.1.127:8080/api/v1/groups';
 
 
   Future<List<GroupModel>> fetchGroups(String userAuthToken) async {

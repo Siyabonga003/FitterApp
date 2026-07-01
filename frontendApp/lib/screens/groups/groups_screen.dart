@@ -27,7 +27,6 @@ class _GroupsScreenState extends State<GroupsScreen> {
 
       if (activeSessionToken != null && mounted) {
         setState(() {
-          // Initialize the future data execution path with our active session token
           _groupsFuture = _apiService.fetchGroups(activeSessionToken);
         });
       } else {
@@ -52,7 +51,6 @@ class _GroupsScreenState extends State<GroupsScreen> {
         child: Column(
           children: [
             const SizedBox(height: 8),
-            // Create Group Action Trigger Button
             SizedBox(
               width: double.infinity,
               height: 52,

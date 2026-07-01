@@ -33,7 +33,7 @@ class _AuthScreenState extends State<AuthScreen> {
     super.dispose();
   }
 
-  // 🔐 CONNECTED TO SPRING BOOT: Process real authentication session handshake
+  //  CONNECTED TO SPRING BOOT: Process real authentication session handshake
   void _submitAuthSession(GlobalKey<FormState> activeFormKey) async {
     if (activeFormKey.currentState!.validate()) {
       setState(() {

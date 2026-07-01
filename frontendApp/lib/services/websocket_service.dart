@@ -1,15 +1,12 @@
 import 'dart:convert';
 import 'package:stomp_dart_client/stomp.dart';
 import 'package:stomp_dart_client/stomp_config.dart';
-import 'package:stomp_dart_client/stomp_frame.dart';
 
 class WebSocketService {
   StompClient? _client;
   bool _isConnected = false;
 
-  // Replace with your actual server IP — use 10.0.2.2 for Android emulator,
-  // your local IP (e.g. 192.168.x.x) for a physical device
-  static const String _baseWsUrl = 'ws://10.0.2.2:9085/ws/location';
+  static const String _baseUrl = '192.168.1.127:9085';
 
   void connect({
     required String authToken,
@@ -18,17 +15,20 @@ class WebSocketService {
   }) {
     _client = StompClient(
       config: StompConfig(
-        url: _baseWsUrl,
+        url: 'ws://$_baseUrl/ws/location?access_token=$authToken',
         onConnect: (frame) {
           _isConnected = true;
+          print('WebSocket connected');
           onConnected?.call();
         },
-        onDisconnect: (_) => _isConnected = false,
+        onDisconnect: (_) {
+          _isConnected = false;
+          print('WebSocket disconnected');
+        },
         onWebSocketError: (error) => print('WebSocket error: $error'),
+        onStompError: (frame) => print('STOMP error: ${frame.body}'),
         stompConnectHeaders: {'Authorization': 'Bearer $authToken'},
         webSocketConnectHeaders: {'Authorization': 'Bearer $authToken'},
-        // Receive raw text frames from the server
-        onStompError: (frame) => print('STOMP error: ${frame.body}'),
       ),
     );
     _client!.activate();

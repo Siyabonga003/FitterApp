@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend_app/models/runner_location.dart';
 import 'package:frontend_app/providers/runner_location_provider.dart';
 import 'package:frontend_app/theme/app_theme.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
 class LiveMapScreen extends ConsumerStatefulWidget {
@@ -15,16 +16,53 @@ class LiveMapScreen extends ConsumerStatefulWidget {
 
 class _LiveMapScreenState extends ConsumerState<LiveMapScreen> {
   final MapController _mapController = MapController();
-
+  LatLng _initialCenter = const LatLng(-12.8202, 28.2133);
+  LatLng? _myPosition;
+  bool _mapReady = false;
+  String _myInitial = 'M';
 
   @override
   void initState() {
     super.initState();
-    Future.microtask(() =>
-        ref.read(runnerLocationProvider.notifier).initialize());
+    Future.microtask(() async {
+      await _setUserLocation();
+      await ref.read(runnerLocationProvider.notifier).initialize();
+      final name = ref.read(runnerLocationProvider.notifier).myDisplayName;
+      if (mounted && name.isNotEmpty) {
+        setState(() => _myInitial = name[0].toUpperCase());
+      }
+    });
   }
 
-  List<Marker> _buildMarkers(Map<String, RunnerLocation> locations) {
+  Future<void> _setUserLocation() async {
+    try {
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        print('Location permission denied — using Kitwe fallback');
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      if (mounted) {
+        setState(() {
+          _myPosition = LatLng(position.latitude, position.longitude);
+          _initialCenter = _myPosition!;
+        });
+        if (_mapReady) _mapController.move(_myPosition!, 14);
+      }
+    } catch (e) {
+      print('Could not get location: $e — using Kitwe fallback');
+    }
+  }
+
+  List<Marker> _buildFriendMarkers(Map<String, RunnerLocation> locations) {
     return locations.entries
         .where((e) => e.value.sharingLive)
         .map((e) {
@@ -36,58 +74,130 @@ class _LiveMapScreenState extends ConsumerState<LiveMapScreen> {
         point: LatLng(loc.latitude, loc.longitude),
         width: 70,
         height: 70,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+        child: _buildAvatarPin(
+          initial: initial,
+          glowColor: AppTheme.primaryOrange,
+          label: loc.displayName,
+        ),
+      );
+    })
+        .toList();
+  }
+
+  List<Marker> _buildMyLocationMarker() {
+    if (_myPosition == null) return [];
+    return [
+      Marker(
+        point: _myPosition!,
+        width: 70,
+        height: 70,
+        child: _buildAvatarPin(
+          initial: _myInitial,
+          glowColor: const Color(0xFF39FF14),
+          label: 'You',
+          isMe: true,
+        ),
+      ),
+    ];
+  }
+
+  Widget _buildAvatarPin({
+    required String initial,
+    required Color glowColor,
+    required String label,
+    bool isMe = false,
+  }) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Stack(
+          alignment: Alignment.center,
           children: [
+            // Outer soft glow ring
             Container(
-              padding: const EdgeInsets.all(3),
+              width: 48,
+              height: 48,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: AppTheme.primaryOrange,
+                color: glowColor.withOpacity(0.15),
+                border: Border.all(
+                  color: glowColor.withOpacity(0.4),
+                  width: 1.5,
+                ),
+              ),
+            ),
+            // Avatar circle with initial
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: isMe
+                    ? const Color(0xFF39FF14).withOpacity(0.9)
+                    : AppTheme.primaryOrange,
+                border: Border.all(color: Colors.white, width: 2),
                 boxShadow: [
                   BoxShadow(
-                    color: AppTheme.primaryOrange.withOpacity(0.4),
+                    color: glowColor.withOpacity(0.5),
                     blurRadius: 8,
                     spreadRadius: 2,
                   ),
                 ],
               ),
-              child: CircleAvatar(
-                radius: 16,
-                backgroundColor: const Color(0xFF1F2C42),
+              child: Center(
                 child: Text(
                   initial,
                   style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
-                    fontSize: 12,
+                    fontSize: 13,
                   ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 2),
-            // Name label under the pin
-            Container(
-              padding:
-              const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: AppTheme.darkCard.withOpacity(0.9),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                loc.displayName,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 9,
-                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),
           ],
         ),
+        const SizedBox(height: 2),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0B1929).withOpacity(0.9),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: glowColor,
+              fontSize: 9,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  List<Polyline> _buildTrails(Map<String, RunnerLocation> locations) {
+    final List<Polyline> trails = [];
+
+    for (final entry in locations.entries) {
+      final loc = entry.value;
+      if (loc.trail.length < 2) continue;
+
+      trails.add(
+        Polyline(
+          points: loc.trail,
+          strokeWidth: 3.0,
+          color: AppTheme.primaryOrange.withOpacity(0.7),
+          // Dashed style to distinguish from roads
+          isDotted: false,
+          borderColor: AppTheme.primaryOrange.withOpacity(0.2),
+          borderStrokeWidth: 6.0,
+        ),
       );
-    })
-        .toList();
+    }
+
+    return trails;
   }
 
   @override
@@ -99,26 +209,33 @@ class _LiveMapScreenState extends ConsumerState<LiveMapScreen> {
       backgroundColor: AppTheme.darkBg,
       body: Stack(
         children: [
+          // 1. DARK MAP
           FlutterMap(
             mapController: _mapController,
-            options: const MapOptions(
-              initialCenter: LatLng(-26.2041, 28.0473),
+            options: MapOptions(
+              initialCenter: _initialCenter,
               initialZoom: 14,
+              onMapReady: () => setState(() => _mapReady = true),
             ),
             children: [
               TileLayer(
                 urlTemplate:
-                'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                'https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}.png?api_key=926556bf-ce92-4e48-b18d-211440686a39',
                 userAgentPackageName: 'com.yourapp.frontend_app',
                 maxNativeZoom: 18,
               ),
+              PolylineLayer(
+                polylines: _buildTrails(locations),
+              ),
               MarkerLayer(
-                markers: _buildMarkers(locations),
+                markers: _buildFriendMarkers(locations),
+              ),
+              MarkerLayer(
+                markers: _buildMyLocationMarker(),
               ),
             ],
           ),
 
-          // 2. FLOATING TOP SEARCH BAR
           Positioned(
             top: 50,
             left: 16,
@@ -152,7 +269,6 @@ class _LiveMapScreenState extends ConsumerState<LiveMapScreen> {
             ),
           ),
 
-          // 3. FLOATING MAP CONTROLS
           Positioned(
             top: 50,
             right: 16,
@@ -160,18 +276,14 @@ class _LiveMapScreenState extends ConsumerState<LiveMapScreen> {
               children: [
                 _buildMapActionButton(
                   Icons.my_location_rounded,
-                  onTap: () {
-                    _mapController.move(
-                      const LatLng(-26.2041, 28.0473),
-                      14,
-                    );
-                  },
+                  onTap: () async => await _setUserLocation(),
                 ),
                 const SizedBox(height: 12),
                 _buildMapActionButton(Icons.layers_outlined),
               ],
             ),
           ),
+
 
           Align(
             alignment: Alignment.bottomCenter,
@@ -196,7 +308,6 @@ class _LiveMapScreenState extends ConsumerState<LiveMapScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Drag handle
                   Center(
                     child: Container(
                       margin: const EdgeInsets.symmetric(vertical: 12),
@@ -207,7 +318,6 @@ class _LiveMapScreenState extends ConsumerState<LiveMapScreen> {
                           borderRadius: BorderRadius.circular(2)),
                     ),
                   ),
-                  // Header with live count from real state
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 20.0),
                     child: Row(
@@ -232,7 +342,6 @@ class _LiveMapScreenState extends ConsumerState<LiveMapScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  // Live friend cards — empty state if no one is running
                   Expanded(
                     child: locations.isEmpty
                         ? const Center(
@@ -350,12 +459,11 @@ class _LiveMapScreenState extends ConsumerState<LiveMapScreen> {
                       fontSize: 12,
                       fontWeight: FontWeight.bold)),
               const SizedBox(height: 6),
-              // Cheer button
               GestureDetector(
                 onTap: () async {
                   await ref
                       .read(runnerLocationProvider.notifier)
-                      .sendCheer(userId); // no token arg
+                      .sendCheer(userId);
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
