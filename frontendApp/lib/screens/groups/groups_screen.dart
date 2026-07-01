@@ -1,8 +1,42 @@
 import 'package:flutter/material.dart';
 import 'package:frontend_app/theme/app_theme.dart';
+import 'package:frontend_app/models/group_model.dart';
+import 'package:frontend_app/services/groups_services.dart';
+import 'package:frontend_app/services/auth_service.dart';
 
-class GroupsScreen extends StatelessWidget {
+class GroupsScreen extends StatefulWidget {
   const GroupsScreen({super.key});
+
+  @override
+  State<GroupsScreen> createState() => _GroupsScreenState();
+}
+
+class _GroupsScreenState extends State<GroupsScreen> {
+  Future<List<GroupModel>>? _groupsFuture;
+  final GroupsApiService _apiService = GroupsApiService();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadGroupsWithToken();
+  }
+
+  Future<void> _loadGroupsWithToken() async {
+    try {
+      final String? activeSessionToken = await AuthService.getToken();
+
+      if (activeSessionToken != null && mounted) {
+        setState(() {
+          // Initialize the future data execution path with our active session token
+          _groupsFuture = _apiService.fetchGroups(activeSessionToken);
+        });
+      } else {
+        print("Error: No active Keycloak session token found in preferences.");
+      }
+    } catch (e) {
+      print("Error loading active token: $e");
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -17,8 +51,8 @@ class GroupsScreen extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16.0),
         child: Column(
           children: [
-            // Create Group Action Trigger Button
             const SizedBox(height: 8),
+            // Create Group Action Trigger Button
             SizedBox(
               width: double.infinity,
               height: 52,
@@ -41,24 +75,40 @@ class GroupsScreen extends StatelessWidget {
 
             // Groups Vertical Scrolling Feed Layout List
             Expanded(
-              child: ListView(
-                children: [
-                  const GroupCard(
-                    groupName: 'Family Runners',
-                    memberCount: 14,
-                    progressLabel: 'Goal → 200km this month',
-                    progressValue: 0.68,
-                    percentageText: '68%',
-                  ),
-                  const SizedBox(height: 16),
-                  const GroupCard(
-                    groupName: 'Campus Running Club',
-                    memberCount: 43,
-                    progressLabel: 'Goal → 500km this month',
-                    progressValue: 0.32,
-                    percentageText: '32%',
-                  ),
-                ],
+              child: _groupsFuture == null
+                  ? const Center(child: CircularProgressIndicator(color: AppTheme.primaryOrange))
+                  : FutureBuilder<List<GroupModel>>(
+                future: _groupsFuture,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(
+                      child: CircularProgressIndicator(color: AppTheme.primaryOrange),
+                    );
+                  } else if (snapshot.hasError) {
+                    return Center(
+                      child: Text(
+                        'Error loading groups data',
+                        style: TextStyle(color: Colors.redAccent.shade100, fontSize: 14),
+                      ),
+                    );
+                  } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                    return const Center(
+                      child: Text('No active groups found.', style: TextStyle(color: AppTheme.textLight)),
+                    );
+                  }
+
+                  // Dynamic layout map stream
+                  final groups = snapshot.data!;
+                  return ListView.builder(
+                    itemCount: groups.length,
+                    itemBuilder: (context, index) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 16.0),
+                        child: GroupCard(group: groups[index]),
+                      );
+                    },
+                  );
+                },
               ),
             ),
           ],
@@ -70,18 +120,10 @@ class GroupsScreen extends StatelessWidget {
 
 // 🛠️ REUSABLE UI CARD COMPONENT: GroupCard Widget
 class GroupCard extends StatelessWidget {
-  final String groupName;
-  final int memberCount;
-  final String progressLabel;
-  final double progressValue;
-  final String percentageText;
+  final GroupModel group;
 
   const GroupCard({
-    required this.groupName,
-    required this.memberCount,
-    required this.progressLabel,
-    required this.progressValue,
-    required this.percentageText,
+    required this.group,
     super.key,
   });
 
@@ -105,18 +147,18 @@ class GroupCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    groupName,
+                    group.name,
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(color: AppTheme.textWhite, fontSize: 20),
                   ),
                 ),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.05), // Fixed custom opacity error
+                    color: Colors.white.withOpacity(0.05),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
-                    '$memberCount Members',
+                    '${group.memberCount} Members',
                     style: const TextStyle(color: AppTheme.textLight, fontSize: 12, fontWeight: FontWeight.w500),
                   ),
                 ),
@@ -128,8 +170,8 @@ class GroupCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(progressLabel, style: const TextStyle(color: AppTheme.textLight, fontSize: 13)),
-                Text(percentageText, style: const TextStyle(color: AppTheme.primaryOrange, fontWeight: FontWeight.bold, fontSize: 13)),
+                Text(group.progressLabel, style: const TextStyle(color: AppTheme.textLight, fontSize: 13)),
+                Text(group.percentageText, style: const TextStyle(color: AppTheme.primaryOrange, fontWeight: FontWeight.bold, fontSize: 13)),
               ],
             ),
             const SizedBox(height: 8),
@@ -138,7 +180,7 @@ class GroupCard extends StatelessWidget {
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: LinearProgressIndicator(
-                value: progressValue,
+                value: group.progressValue,
                 minHeight: 8,
                 backgroundColor: Colors.white10,
                 valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.primaryOrange),

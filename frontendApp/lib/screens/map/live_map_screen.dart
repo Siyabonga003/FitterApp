@@ -1,56 +1,124 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:frontend_app/models/runner_location.dart';
+import 'package:frontend_app/providers/runner_location_provider.dart';
 import 'package:frontend_app/theme/app_theme.dart';
+import 'package:latlong2/latlong.dart';
 
-class LiveMapScreen extends StatelessWidget {
+class LiveMapScreen extends ConsumerStatefulWidget {
   const LiveMapScreen({super.key});
 
   @override
+  ConsumerState<LiveMapScreen> createState() => _LiveMapScreenState();
+}
+
+class _LiveMapScreenState extends ConsumerState<LiveMapScreen> {
+  final MapController _mapController = MapController();
+
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(() =>
+        ref.read(runnerLocationProvider.notifier).initialize());
+  }
+
+  List<Marker> _buildMarkers(Map<String, RunnerLocation> locations) {
+    return locations.entries
+        .where((e) => e.value.sharingLive)
+        .map((e) {
+      final loc = e.value;
+      final initial = loc.displayName.isNotEmpty
+          ? loc.displayName[0].toUpperCase()
+          : '?';
+      return Marker(
+        point: LatLng(loc.latitude, loc.longitude),
+        width: 70,
+        height: 70,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppTheme.primaryOrange,
+                boxShadow: [
+                  BoxShadow(
+                    color: AppTheme.primaryOrange.withOpacity(0.4),
+                    blurRadius: 8,
+                    spreadRadius: 2,
+                  ),
+                ],
+              ),
+              child: CircleAvatar(
+                radius: 16,
+                backgroundColor: const Color(0xFF1F2C42),
+                child: Text(
+                  initial,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 2),
+            // Name label under the pin
+            Container(
+              padding:
+              const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: AppTheme.darkCard.withOpacity(0.9),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                loc.displayName,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    })
+        .toList();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final locations = ref.watch(runnerLocationProvider);
+    final liveCount = locations.values.where((l) => l.sharingLive).length;
+
     return Scaffold(
       backgroundColor: AppTheme.darkBg,
       body: Stack(
         children: [
-          // 1. IMMERSIVE MAP CANVAS VECTOR GROUND
-          Container(
-            width: double.infinity,
-            height: double.infinity,
-            color: const Color(0xFF0B111E), // Ultra dark map background contrast tint
-            child: CustomPaint(
-              painter: MapGridLinePainter(),
+          FlutterMap(
+            mapController: _mapController,
+            options: const MapOptions(
+              initialCenter: LatLng(-26.2041, 28.0473),
+              initialZoom: 14,
             ),
+            children: [
+              TileLayer(
+                urlTemplate:
+                'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.yourapp.frontend_app',
+                maxNativeZoom: 18,
+              ),
+              MarkerLayer(
+                markers: _buildMarkers(locations),
+              ),
+            ],
           ),
 
-          // 2. LIVE FLOATING TELEMETRY RUNNER BUBBLES (Mock Locations)
-          Positioned(
-            top: 220,
-            left: 80,
-            child: _buildLiveRunnerAvatar('S', 'Siya (You)', true),
-          ),
-          Positioned(
-            top: 160,
-            right: 100,
-            child: _buildLiveRunnerAvatar('P', 'Peter', false),
-          ),
-          Positioned(
-            bottom: 340,
-            left: 140,
-            child: _buildLiveRunnerAvatar('M', 'Mary', false),
-          ),
-
-          // 3. FLOATING COMPASS & LOCATION CONTROLS
-          Positioned(
-            top: 50,
-            right: 16,
-            child: Column(
-              children: [
-                _buildMapActionButton(Icons.my_location_rounded),
-                const SizedBox(height: 12),
-                _buildMapActionButton(Icons.layers_outlined),
-              ],
-            ),
-          ),
-
-          // 4. FLOATING TOP INTERACTION SEARCH ANCHOR
+          // 2. FLOATING TOP SEARCH BAR
           Positioned(
             top: 50,
             left: 16,
@@ -61,7 +129,8 @@ class LiveMapScreen extends StatelessWidget {
               decoration: BoxDecoration(
                 color: AppTheme.darkCard,
                 borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: Colors.white.withOpacity(0.1), width: 1),
+                border: Border.all(
+                    color: Colors.white.withOpacity(0.1), width: 1),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withOpacity(0.3),
@@ -72,14 +141,38 @@ class LiveMapScreen extends StatelessWidget {
               ),
               child: const Row(
                 children: [
-                  Icon(Icons.search_rounded, color: AppTheme.textLight, size: 20),
+                  Icon(Icons.search_rounded,
+                      color: AppTheme.textLight, size: 20),
                   SizedBox(width: 12),
-                  Text('Find friends or routes...', style: TextStyle(color: AppTheme.textLight, fontSize: 14)),
+                  Text('Find friends or routes...',
+                      style: TextStyle(
+                          color: AppTheme.textLight, fontSize: 14)),
                 ],
               ),
             ),
           ),
-          
+
+          // 3. FLOATING MAP CONTROLS
+          Positioned(
+            top: 50,
+            right: 16,
+            child: Column(
+              children: [
+                _buildMapActionButton(
+                  Icons.my_location_rounded,
+                  onTap: () {
+                    _mapController.move(
+                      const LatLng(-26.2041, 28.0473),
+                      14,
+                    );
+                  },
+                ),
+                const SizedBox(height: 12),
+                _buildMapActionButton(Icons.layers_outlined),
+              ],
+            ),
+          ),
+
           Align(
             alignment: Alignment.bottomCenter,
             child: Container(
@@ -87,8 +180,11 @@ class LiveMapScreen extends StatelessWidget {
               width: double.infinity,
               decoration: BoxDecoration(
                 color: AppTheme.darkCard,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-                border: Border(top: BorderSide(color: Colors.white.withOpacity(0.1), width: 1)),
+                borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(24)),
+                border: Border(
+                    top: BorderSide(
+                        color: Colors.white.withOpacity(0.1), width: 1)),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withOpacity(0.4),
@@ -100,37 +196,72 @@ class LiveMapScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Slider Top Handle
+                  // Drag handle
                   Center(
                     child: Container(
                       margin: const EdgeInsets.symmetric(vertical: 12),
                       width: 40,
                       height: 4,
-                      decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
+                      decoration: BoxDecoration(
+                          color: Colors.white24,
+                          borderRadius: BorderRadius.circular(2)),
                     ),
                   ),
-                  // Title Section
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 20.0),
+                  // Header with live count from real state
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20.0),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text('ACTIVE FRIENDS NEARBY', style: TextStyle(color: AppTheme.textWhite, fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 0.8)),
-                        Text('2 Live Now', style: TextStyle(color: AppTheme.primaryOrange, fontSize: 12, fontWeight: FontWeight.bold)),
+                        const Text(
+                          'ACTIVE FRIENDS NEARBY',
+                          style: TextStyle(
+                              color: AppTheme.textWhite,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                              letterSpacing: 0.8),
+                        ),
+                        Text(
+                          '$liveCount Live Now',
+                          style: const TextStyle(
+                              color: AppTheme.primaryOrange,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold),
+                        ),
                       ],
                     ),
                   ),
                   const SizedBox(height: 12),
-                  // Horizontal List View of active buddies
+                  // Live friend cards — empty state if no one is running
                   Expanded(
-                    child: ListView(
+                    child: locations.isEmpty
+                        ? const Center(
+                      child: Text(
+                        'No friends running right now',
+                        style: TextStyle(
+                            color: AppTheme.textLight, fontSize: 13),
+                      ),
+                    )
+                        : ListView(
                       scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      children: [
-                        _buildFriendPanelCard('Peter', 'Active 2m ago', '⚡ 5:10 /km', 'P'),
-                        _buildFriendPanelCard('Mary', 'Active 12m ago', '🏁 4.2 km', 'M'),
-                        _buildFriendPanelCard('John', 'Offline', 'Yesterday', 'J'),
-                      ],
+                      padding:
+                      const EdgeInsets.symmetric(horizontal: 16),
+                      children: locations.entries.map((entry) {
+                        final loc = entry.value;
+                        return _buildFriendPanelCard(
+                          userId: loc.userId,
+                          name: loc.displayName,
+                          status: loc.sharingLive
+                              ? 'Live now'
+                              : 'Not sharing',
+                          metric: loc.sharingLive
+                              ? '⚡ ${loc.formattedPace}'
+                              : '🏁 ${loc.formattedDistance}',
+                          initial: loc.displayName.isNotEmpty
+                              ? loc.displayName[0].toUpperCase()
+                              : '?',
+                        );
+                      }).toList(),
                     ),
                   ),
                 ],
@@ -142,47 +273,7 @@ class LiveMapScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildLiveRunnerAvatar(String initial, String name, bool isUser) {
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(3),
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: isUser ? AppTheme.primaryOrange : AppTheme.darkCard,
-            border: Border.all(
-              color: isUser ? Colors.white : AppTheme.primaryOrange.withOpacity(0.5),
-              width: 1.5,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: (isUser ? AppTheme.primaryOrange : Colors.black).withOpacity(0.4),
-                blurRadius: 10,
-                spreadRadius: 2,
-              ),
-            ],
-          ),
-          child: CircleAvatar(
-            radius: 20,
-            backgroundColor: const Color(0xFF1F2C42),
-            child: Text(initial, style: TextStyle(color: isUser ? Colors.white : AppTheme.primaryOrange, fontWeight: FontWeight.bold)),
-          ),
-        ),
-        const SizedBox(height: 4),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-          decoration: BoxDecoration(
-            color: AppTheme.darkCard.withOpacity(0.85),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white.withOpacity(0.1), width: 0.5),
-          ),
-          child: Text(name, style: const TextStyle(color: AppTheme.textWhite, fontSize: 10, fontWeight: FontWeight.w600)),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildMapActionButton(IconData icon) {
+  Widget _buildMapActionButton(IconData icon, {VoidCallback? onTap}) {
     return Container(
       width: 44,
       height: 44,
@@ -191,17 +282,26 @@ class LiveMapScreen extends StatelessWidget {
         shape: BoxShape.circle,
         border: Border.all(color: Colors.white.withOpacity(0.1), width: 1),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 6, offset: const Offset(0, 3)),
+          BoxShadow(
+              color: Colors.black.withOpacity(0.2),
+              blurRadius: 6,
+              offset: const Offset(0, 3)),
         ],
       ),
       child: IconButton(
         icon: Icon(icon, color: AppTheme.textWhite, size: 20),
-        onPressed: () {},
+        onPressed: onTap ?? () {},
       ),
     );
   }
 
-  Widget _buildFriendPanelCard(String name, String status, String metric, String initial) {
+  Widget _buildFriendPanelCard({
+    required String userId,
+    required String name,
+    required String status,
+    required String metric,
+    required String initial,
+  }) {
     return Container(
       width: 150,
       margin: const EdgeInsets.only(right: 12, bottom: 20, top: 4),
@@ -220,43 +320,81 @@ class LiveMapScreen extends StatelessWidget {
               CircleAvatar(
                 radius: 14,
                 backgroundColor: AppTheme.primaryOrange.withOpacity(0.1),
-                child: Text(initial, style: const TextStyle(color: AppTheme.primaryOrange, fontSize: 11, fontWeight: FontWeight.bold)),
+                child: Text(initial,
+                    style: const TextStyle(
+                        color: AppTheme.primaryOrange,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold)),
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: Text(name, style: const TextStyle(color: AppTheme.textWhite, fontSize: 13, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
+                child: Text(name,
+                    style: const TextStyle(
+                        color: AppTheme.textWhite,
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold),
+                    overflow: TextOverflow.ellipsis),
               ),
             ],
           ),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(status, style: const TextStyle(color: AppTheme.textLight, fontSize: 11)),
+              Text(status,
+                  style: const TextStyle(
+                      color: AppTheme.textLight, fontSize: 11)),
               const SizedBox(height: 2),
-              Text(metric, style: const TextStyle(color: AppTheme.primaryOrange, fontSize: 12, fontWeight: FontWeight.bold)),
+              Text(metric,
+                  style: const TextStyle(
+                      color: AppTheme.primaryOrange,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold)),
+              const SizedBox(height: 6),
+              // Cheer button
+              GestureDetector(
+                onTap: () async {
+                  await ref
+                      .read(runnerLocationProvider.notifier)
+                      .sendCheer(userId); // no token arg
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Cheered $name! 👏'),
+                        backgroundColor: AppTheme.primaryOrange,
+                        duration: const Duration(seconds: 2),
+                      ),
+                    );
+                  }
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryOrange.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                        color: AppTheme.primaryOrange.withOpacity(0.4),
+                        width: 1),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.electric_bolt_rounded,
+                          color: AppTheme.primaryOrange, size: 12),
+                      SizedBox(width: 3),
+                      Text('Cheer',
+                          style: TextStyle(
+                              color: AppTheme.primaryOrange,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ),
+              ),
             ],
           ),
         ],
       ),
     );
   }
-}
-
-class MapGridLinePainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.white.withOpacity(0.03)
-      ..strokeWidth = 1.0;
-
-    for (double i = 0; i < size.width; i += 40) {
-      canvas.drawLine(Offset(i, 0), Offset(i, size.height), paint);
-    }
-    for (double i = 0; i < size.height; i += 40) {
-      canvas.drawLine(Offset(0, i), Offset(size.width, i), paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

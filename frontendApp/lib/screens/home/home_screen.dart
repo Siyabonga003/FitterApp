@@ -3,7 +3,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:frontend_app/theme/app_theme.dart';
 import 'package:frontend_app/models/activity_model.dart';
 import 'package:frontend_app/widgets/activity_card.dart';
-import 'package:frontend_app/services/activity_service.dart'; // ✅ Use ActivityService
+import 'package:frontend_app/services/activity_service.dart';
+import 'package:frontend_app/screens/activity/create_activity_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -29,7 +30,6 @@ class _HomeScreenState extends State<HomeScreen> {
       throw Exception('No userId found in session — please log in again');
     }
 
-    // ✅ Use ActivityService which correctly attaches the Bearer token
     final List<dynamic> data = await ActivityService.getActivities(userId);
     return data.map((json) => Activity.fromJson(json)).toList();
   }
@@ -43,7 +43,6 @@ class _HomeScreenState extends State<HomeScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // TOP HEADER
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
               child: Row(
@@ -80,7 +79,6 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
 
-            // ACTIVITY FEED
             Expanded(
               child: FutureBuilder<List<Activity>>(
                 future: _activitiesFuture,
@@ -172,7 +170,15 @@ class _HomeScreenState extends State<HomeScreen> {
             fontWeight: FontWeight.bold,
           ),
         ),
-        onPressed: () {},
+        onPressed: () async {
+          final created = await Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const CreateActivityScreen()),
+          );
+          if (created == true) {
+            setState(() => _activitiesFuture = fetchActivities()); // ✅ Refresh feed
+          }
+        },
       ),
     );
   }

@@ -54,6 +54,11 @@
 		<key>UIMainStoryboardFile</key>
 		<string>Main</string>
 		<key>UISupportedInterfaceOrientations</key>
+
+		<key>NSLocationWhenInUseUsageDescription</key>
+        <string>Fitter needs your location to show you on the live map</string>
+
+
 		<array>
 			<string>UIInterfaceOrientationPortrait</string>
 			<string>UIInterfaceOrientationLandscapeLeft</string>
