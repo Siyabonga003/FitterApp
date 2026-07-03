@@ -8,7 +8,7 @@ To get started with the Fitter API, follow these steps:
 
 1. Clone the repository:
     ```bash
-    git clone https://github.com/Kwasila/fitter-api.git
+    git clone https://github.com/Siyabonga003/fitter-api.git
     ```
 
 2. Navigate to the project directory:
