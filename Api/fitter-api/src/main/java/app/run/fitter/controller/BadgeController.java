@@ -1,4 +1,4 @@
-package app.run.fitter.gamification.controller;
+package app.run.fitter.controller;
 
 import app.run.fitter.gamification.dto.BadgeDto;
 import app.run.fitter.gamification.repository.BadgeAwardedView;

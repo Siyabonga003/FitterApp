@@ -3,7 +3,7 @@ package app.run.fitter.gamification.service;
 import app.run.fitter.gamification.dto.BadgeDto;
 import app.run.fitter.gamification.entity.BadgesAwarded;
 import app.run.fitter.gamification.repository.BadgesAwardedRepository;
-// import app.run.fitter.controller.BadgeController;
+import app.run.fitter.controller.BadgeController;
 import org.springframework.r2dbc.core.DatabaseClient;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
@@ -28,7 +28,7 @@ public class BadgeEvaluationService {
     }
 
 
-    public Flux<BadgeDto> evaluateAndAward(UUID userId, UUID activityId) {
+    public Flux<BadgeDto> evaluateAndAward(UUID userId) {
         return Flux.merge(
                 checkFirst5K(userId),
                 checkStreak(userId, 7, "STREAK_7"),
@@ -116,7 +116,7 @@ public class BadgeEvaluationService {
                 .flatMap(notAwarded -> getBadgeTypeId(code))
                 .flatMap(badgeTypeId -> {
                     BadgesAwarded badge = BadgesAwarded.builder()
-                            // .badgesAwardedId(UUID.randomUUID())
+                            .badgeAwardedId(UUID.randomUUID())
                             .userId(userId)
                             .badgeTypeId(badgeTypeId)
                             .awardedAt(ZonedDateTime.now())

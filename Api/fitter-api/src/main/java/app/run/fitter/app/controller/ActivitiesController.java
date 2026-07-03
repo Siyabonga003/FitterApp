@@ -1,6 +1,7 @@
 package app.run.fitter.app.controller;
 
 import app.run.fitter.activity.dto.ActivitiesDTO;
+import app.run.fitter.activity.dto.ActivityStatsDto;
 import app.run.fitter.activity.service.ActivitiesService;
 import app.run.fitter.constant.ErrorResponse;
 import app.run.fitter.constant.PagedResponse;
@@ -16,6 +17,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
+import java.util.List;
 
 import java.util.UUID;
 
@@ -85,4 +87,23 @@ public class ActivitiesController {
                 .map(ResponseEntity::ok)
                 .onErrorResume(e -> Mono.just(ResponseEntity.notFound().build()));
     }
+
+    @Operation(summary = "Get all-time stats for a user")
+    @GetMapping("/user/{userId}/stats")
+    @PreAuthorize("hasAnyRole('ROLE_USER')")
+    public Mono<ResponseEntity<ActivityStatsDto>> getStats(
+        @PathVariable UUID userId) {
+    return activitiesService.getStats(userId)
+            .map(ResponseEntity::ok);
+}
+   @Operation(summary = "Get active days this week")
+   @GetMapping("/user/{userId}/active-days")
+   @PreAuthorize("hasAnyRole('ROLE_USER')")
+   public Mono<ResponseEntity<List<Integer>>> getActiveDaysThisWeek(
+                @PathVariable UUID userId) {
+        return activitiesService.getActiveDaysThisWeek(userId)
+                .map(ResponseEntity::ok);
+}
+
+
 }

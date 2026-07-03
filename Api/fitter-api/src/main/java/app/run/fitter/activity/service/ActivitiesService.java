@@ -1,9 +1,11 @@
 package app.run.fitter.activity.service;
 
 import app.run.fitter.activity.dto.ActivitiesDTO;
+import app.run.fitter.activity.dto.ActivityStatsDto;
 import app.run.fitter.constant.PagedResponse;
 import reactor.core.publisher.Mono;
 
+import java.util.List;
 import java.util.UUID;
 
 public interface ActivitiesService {
@@ -20,4 +22,8 @@ public interface ActivitiesService {
     Mono<PagedResponse<ActivitiesDTO.ActivityResponse>> getActivities(UUID userId);
 
     Mono<PagedResponse<ActivitiesDTO.ActivityResponse>> getPublicActivities(UUID userId);
+
+    Mono<ActivityStatsDto> getStats(UUID userId);
+
+    Mono<List<Integer>> getActiveDaysThisWeek(UUID userId);
 }

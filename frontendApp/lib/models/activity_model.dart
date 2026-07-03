@@ -9,6 +9,7 @@ class Activity {
   final String pace;
   final int activityTypeId;
   final bool isLive;
+  final String? routeGeoJson;
 
   Activity({
     required this.activityId,
@@ -21,16 +22,15 @@ class Activity {
     required this.pace,
     required this.activityTypeId,
     required this.isLive,
+    required this.routeGeoJson,
   });
 
   factory Activity.fromJson(Map<String, dynamic> json) {
-    // Format distance
     final distanceKm = json['distanceKm'];
     final distanceStr = distanceKm != null
         ? '${double.tryParse(distanceKm.toString())?.toStringAsFixed(2) ?? "0.00"} km'
         : '0.00 km';
 
-    // Format duration from seconds → m:ss or h:mm:ss
     final durationSec = json['durationSec'] as int?;
     String durationStr = '0:00';
     if (durationSec != null && durationSec > 0) {
@@ -42,7 +42,6 @@ class Activity {
           : '$m:${s.toString().padLeft(2, '0')}';
     }
 
-    // Format pace from sec/km → mm:ss /km
     final paceSecPerKm = json['avgPaceSecPerKm'] as int?;
     String paceStr = '--:-- /km';
     if (paceSecPerKm != null && paceSecPerKm > 0) {
@@ -51,7 +50,6 @@ class Activity {
       paceStr = '$pm:${ps.toString().padLeft(2, '0')} /km';
     }
 
-    // Format time ago from createdAt
     final createdAtStr = json['createdAt'] as String?;
     String timeAgo = 'Just now';
     if (createdAtStr != null) {
@@ -68,7 +66,6 @@ class Activity {
       } catch (_) {}
     }
 
-    // Activity type label from typeId
     final typeId = json['activityTypeId'] as int? ?? 1;
 
     return Activity(
@@ -82,16 +79,16 @@ class Activity {
       pace: paceStr,
       activityTypeId: typeId,
       isLive: json['isLive'] ?? false,
+      routeGeoJson: json['routeGeoJson'] as String?,
     );
   }
 
   static String _activityTypeLabel(int typeId) {
     switch (typeId) {
-      case 1: return '🏃 Running';
-      case 2: return '🚴 Cycling';
-      case 3: return '🚶 Walking';
-      case 4: return '🏊 Swimming';
-      default: return '💪 Workout';
+      case 1: return ' Running';
+      case 2: return ' Jogging';
+      case 3: return ' Walking';
+      default: return ' Workout';
     }
   }
 }
