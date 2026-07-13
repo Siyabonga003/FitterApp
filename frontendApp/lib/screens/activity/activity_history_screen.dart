@@ -70,7 +70,7 @@ class _ActivityHistoryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final trail = _parseRoute(null);
+    final trail = _parseRoute(activity.routeGeoJson);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),

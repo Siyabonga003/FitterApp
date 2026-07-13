@@ -5,6 +5,7 @@ import 'package:frontend_app/screens/auth/auth_screen.dart';
 import 'package:frontend_app/screens/activity/activity_history_screen.dart';
 import 'package:frontend_app/providers/badge_provider.dart';
 import 'package:frontend_app/providers/profile_provider.dart';
+import 'package:frontend_app/screens/friends/friends_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
@@ -25,7 +26,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     Future.microtask(() async {
       ref.read(badgeProvider.notifier).loadBadges();
       ref.read(profileProvider.notifier).load();
-      // Load display name from SharedPreferences
       final prefs = await SharedPreferences.getInstance();
       final name = prefs.getString('username') ?? '';
       if (mounted) {
@@ -129,8 +129,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final badges = ref.watch(badgeProvider);
     final profile = ref.watch(profileProvider);
     final stats = profile.stats;
-
-    // Convert distance for metric/imperial toggle
     final distanceValue = _isMetric
         ? stats.totalDistanceKm.toStringAsFixed(1)
         : (stats.totalDistanceKm * 0.621371).toStringAsFixed(1);
@@ -162,7 +160,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 16.0),
           children: [
             const SizedBox(height: 12),
-            // Profile header
             Row(
               children: [
                 CircleAvatar(
@@ -201,7 +198,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             ),
             const SizedBox(height: 28),
 
-            // Real metrics from API
             Text('ALL-TIME METRICS',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: AppTheme.textLight, letterSpacing: 1)),
@@ -251,7 +247,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             ),
             const SizedBox(height: 28),
 
-            // Weekly goal — real active days from DB
             Card(
               elevation: 0,
               color: AppTheme.darkCard,
@@ -289,7 +284,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       mainAxisAlignment:
                       MainAxisAlignment.spaceBetween,
                       children: [
-                        // 1=Mon, 2=Tue ... 7=Sun
                         _buildDayIndicator('M',
                             profile.activeDaysThisWeek.contains(1)),
                         _buildDayIndicator('T',
@@ -312,7 +306,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             ),
             const SizedBox(height: 28),
 
-            // Badges
             Text('UNLOCKED ACHIEVEMENTS',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: AppTheme.textLight, letterSpacing: 1)),
@@ -390,6 +383,48 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             ),
                           ],
                         ),
+                      ],
+                    ),
+                    const Icon(Icons.chevron_right_rounded,
+                        color: AppTheme.textLight),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 12),
+            GestureDetector(
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const FriendsScreen()),
+              ),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppTheme.darkCard,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.white10, width: 1),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryOrange.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(Icons.people_rounded,
+                              color: AppTheme.primaryOrange, size: 20),
+                        ),
+                        const SizedBox(width: 14),
+                        const Text('Friends',
+                            style: TextStyle(
+                                color: AppTheme.textWhite,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15)),
                       ],
                     ),
                     const Icon(Icons.chevron_right_rounded,

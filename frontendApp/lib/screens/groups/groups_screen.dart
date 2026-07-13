@@ -65,7 +65,6 @@ class _GroupsScreenState extends State<GroupsScreen> {
                   style: TextStyle(color: AppTheme.primaryOrange, fontWeight: FontWeight.bold, fontSize: 15),
                 ),
                 onPressed: () {
-                  // Provisioning flow placeholder
                 },
               ),
             ),
@@ -95,7 +94,6 @@ class _GroupsScreenState extends State<GroupsScreen> {
                     );
                   }
 
-                  // Dynamic layout map stream
                   final groups = snapshot.data!;
                   return ListView.builder(
                     itemCount: groups.length,
@@ -116,7 +114,6 @@ class _GroupsScreenState extends State<GroupsScreen> {
   }
 }
 
-// 🛠️ REUSABLE UI CARD COMPONENT: GroupCard Widget
 class GroupCard extends StatelessWidget {
   final GroupModel group;
 
@@ -139,7 +136,6 @@ class GroupCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header Content Meta Title info
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -164,7 +160,6 @@ class GroupCard extends StatelessWidget {
             ),
             const SizedBox(height: 16),
 
-            // Challenge Progress Label Text info
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -174,7 +169,6 @@ class GroupCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
 
-            // High Performance custom linear indicator block bar
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: LinearProgressIndicator(

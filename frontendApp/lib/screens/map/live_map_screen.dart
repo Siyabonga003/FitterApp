@@ -7,6 +7,8 @@ import 'package:frontend_app/theme/app_theme.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../core/constants.dart';
+
 class LiveMapScreen extends ConsumerStatefulWidget {
   const LiveMapScreen({super.key});
 
@@ -113,7 +115,6 @@ class _LiveMapScreenState extends ConsumerState<LiveMapScreen> {
         Stack(
           alignment: Alignment.center,
           children: [
-            // Outer soft glow ring
             Container(
               width: 48,
               height: 48,
@@ -126,7 +127,6 @@ class _LiveMapScreenState extends ConsumerState<LiveMapScreen> {
                 ),
               ),
             ),
-            // Avatar circle with initial
             Container(
               width: 32,
               height: 32,
@@ -209,7 +209,6 @@ class _LiveMapScreenState extends ConsumerState<LiveMapScreen> {
       backgroundColor: AppTheme.darkBg,
       body: Stack(
         children: [
-          // 1. DARK MAP
           FlutterMap(
             mapController: _mapController,
             options: MapOptions(
@@ -219,8 +218,7 @@ class _LiveMapScreenState extends ConsumerState<LiveMapScreen> {
             ),
             children: [
               TileLayer(
-                urlTemplate:
-                'https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}.png?api_key=926556bf-ce92-4e48-b18d-211440686a39',
+                urlTemplate: 'https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}.png?api_key=${AppConstants.stadiaMapsApiKey}',
                 userAgentPackageName: 'com.yourapp.frontend_app',
                 maxNativeZoom: 18,
               ),

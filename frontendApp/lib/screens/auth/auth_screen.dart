@@ -34,10 +34,35 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
   late TabController _tabController;
   bool _isLoading = false;
 
+  // Password visibility state variables
+  bool _obscureSignInPassword = true;
+  bool _obscureSignUpPassword = true;
+
+  // Track autovalidate mode independently for both views
+  AutovalidateMode _signInAutovalidateMode = AutovalidateMode.disabled;
+  AutovalidateMode _signUpAutovalidateMode = AutovalidateMode.disabled;
+
+  // Track root application screen state
+  // 0 = Landing Selection screen, 1 = Form Tabs screen
+  int _currentView = 0;
+
+  // Multi-step sign-up state (Strava-style gradual reveal)
+  int _signUpStep = 0;
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    // Reset sign up step and errors if user changes tabs manually
+    _tabController.addListener(() {
+      if (!_tabController.indexIsChanging) {
+        setState(() {
+          _signUpStep = 0;
+          _signInAutovalidateMode = AutovalidateMode.disabled;
+          _signUpAutovalidateMode = AutovalidateMode.disabled;
+        });
+      }
+    });
   }
 
   @override
@@ -53,11 +78,38 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
     super.dispose();
   }
 
+  // Handle step-by-step navigation for Sign Up
+  void _nextSignUpStep() {
+    if (_signUpFormKey.currentState!.validate()) {
+      if (_signUpStep < 2) {
+        setState(() {
+          _signUpStep++;
+          _signUpAutovalidateMode = AutovalidateMode.disabled;
+        });
+      } else {
+        _submitAuthSession(_signUpFormKey);
+      }
+    } else {
+      setState(() {
+        _signUpAutovalidateMode = AutovalidateMode.always;
+      });
+    }
+  }
+
+  void _previousSignUpStep() {
+    if (_signUpStep > 0) {
+      setState(() {
+        _signUpStep--;
+        _signUpAutovalidateMode = AutovalidateMode.disabled;
+      });
+    }
+  }
+
   void _submitAuthSession(GlobalKey<FormState> activeFormKey) async {
+    bool isSignIn = activeFormKey == _signInFormKey;
+
     if (activeFormKey.currentState!.validate()) {
       setState(() => _isLoading = true);
-
-      bool isSignIn = activeFormKey == _signInFormKey;
 
       if (isSignIn) {
         final authResult = await AuthService.login(
@@ -77,7 +129,6 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
           }
         }
       } else {
-        // Extra validation for fields not covered by TextFormField validators
         if (_selectedGender == null) {
           setState(() => _isLoading = false);
           _showStatusSnackbar('Please select your gender.', isError: true);
@@ -117,12 +168,23 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
             setState(() {
               _selectedGender = null;
               _selectedBirthDate = null;
+              _signUpStep = 0;
+              _signInAutovalidateMode = AutovalidateMode.disabled;
+              _signUpAutovalidateMode = AutovalidateMode.disabled;
             });
           } else {
             _showStatusSnackbar('Registration aborted. User identity profile exists or network dropped.', isError: true);
           }
         }
       }
+    } else {
+      setState(() {
+        if (isSignIn) {
+          _signInAutovalidateMode = AutovalidateMode.always;
+        } else {
+          _signUpAutovalidateMode = AutovalidateMode.always;
+        }
+      });
     }
   }
 
@@ -168,6 +230,14 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
     return null;
   }
 
+  // Set selected state and navigate forward to tabs
+  void _navigateToTab(int tabIndex) {
+    setState(() {
+      _currentView = 1;
+      _tabController.index = tabIndex;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -177,55 +247,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
           children: [
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 40),
-                  const Text(
-                    'Welcome',
-                    style: TextStyle(color: AppTheme.textWhite, fontSize: 32, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Sign in to track your operational metrics',
-                    style: TextStyle(color: AppTheme.textLight, fontSize: 15),
-                  ),
-                  const SizedBox(height: 32),
-                  Container(
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: AppTheme.darkCard,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.white10),
-                    ),
-                    child: TabBar(
-                      controller: _tabController,
-                      indicatorSize: TabBarIndicatorSize.tab,
-                      indicator: BoxDecoration(
-                        color: AppTheme.primaryOrange,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      labelColor: Colors.white,
-                      unselectedLabelColor: AppTheme.textLight,
-                      labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                      tabs: const [
-                        Tab(text: 'Sign In'),
-                        Tab(text: 'Sign Up'),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  Expanded(
-                    child: TabBarView(
-                      controller: _tabController,
-                      children: [
-                        _buildSignInFormView(),
-                        _buildSignUpFormView(),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+              child: _currentView == 0 ? _buildLandingView() : _buildFormTabsView(),
             ),
             if (_isLoading)
               Container(
@@ -242,9 +264,111 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
     );
   }
 
+  Widget _buildLandingView() {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Spacer(),
+        const Text(
+          'Welcome',
+          style: TextStyle(color: AppTheme.textWhite, fontSize: 40, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 12),
+        const Text(
+          'Track your operational metrics and perform at your highest level.',
+          style: TextStyle(color: AppTheme.textLight, fontSize: 16, height: 1.4),
+        ),
+        const Spacer(),
+        _buildActionButton('SIGN IN', () => _navigateToTab(0)),
+        const SizedBox(height: 16),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: OutlinedButton(
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: Colors.white24, width: 1.5),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: () => _navigateToTab(1),
+            child: const Text(
+              'SIGN UP',
+              style: TextStyle(color: AppTheme.textWhite, fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1),
+            ),
+          ),
+        ),
+        const SizedBox(height: 40),
+      ],
+    );
+  }
+
+  Widget _buildFormTabsView() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 20),
+        IconButton(
+          alignment: Alignment.centerLeft,
+          padding: EdgeInsets.zero,
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppTheme.textWhite, size: 22),
+          onPressed: () {
+            setState(() {
+              _currentView = 0;
+            });
+          },
+        ),
+        const SizedBox(height: 20),
+        const Text(
+          'Welcome',
+          style: TextStyle(color: AppTheme.textWhite, fontSize: 32, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Sign in to track your operational metrics',
+          style: TextStyle(color: AppTheme.textLight, fontSize: 15),
+        ),
+        const SizedBox(height: 32),
+        Container(
+          height: 48,
+          decoration: BoxDecoration(
+            color: AppTheme.darkCard,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white10),
+          ),
+          child: TabBar(
+            controller: _tabController,
+            indicatorSize: TabBarIndicatorSize.tab,
+            indicator: BoxDecoration(
+              color: AppTheme.primaryOrange,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            labelColor: Colors.white,
+            unselectedLabelColor: AppTheme.textLight,
+            labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+            tabs: const [
+              Tab(text: 'Sign In'),
+              Tab(text: 'Sign Up'),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+        Expanded(
+          child: TabBarView(
+            controller: _tabController,
+            children: [
+              _buildSignInFormView(),
+              _buildSignUpFormView(),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildSignInFormView() {
     return Form(
       key: _signInFormKey,
+      autovalidateMode: _signInAutovalidateMode,
       child: ListView(
         physics: const ClampingScrollPhysics(),
         children: [
@@ -253,19 +377,38 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
             hintText: 'Email Address',
             icon: Icons.email_outlined,
             validator: _validateEmail,
+            autovalidateMode: _signInAutovalidateMode,
           ),
           const SizedBox(height: 16),
           _buildTextFormField(
             controller: _signInPasswordController,
             hintText: 'Password',
             icon: Icons.lock_outline_rounded,
-            isObscure: true,
+            isObscure: _obscureSignInPassword,
             validator: (value) {
               if (value == null || value.isEmpty) return 'Please enter your password';
               return null;
             },
+            autovalidateMode: _signInAutovalidateMode,
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
+          Theme(
+            data: ThemeData(unselectedWidgetColor: AppTheme.textLight),
+            child: CheckboxListTile(
+              title: const Text('Show Password', style: TextStyle(color: AppTheme.textLight, fontSize: 13)),
+              value: !_obscureSignInPassword,
+              onChanged: (value) {
+                setState(() {
+                  _obscureSignInPassword = !value!;
+                });
+              },
+              controlAffinity: ListTileControlAffinity.leading,
+              contentPadding: EdgeInsets.zero,
+              activeColor: AppTheme.primaryOrange,
+              checkColor: Colors.white,
+              dense: true,
+            ),
+          ),
           Align(
             alignment: Alignment.centerRight,
             child: TextButton(
@@ -283,130 +426,182 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
   Widget _buildSignUpFormView() {
     return Form(
       key: _signUpFormKey,
+      autovalidateMode: _signUpAutovalidateMode,
       child: ListView(
         physics: const ClampingScrollPhysics(),
         children: [
-          // First Name
-          _buildTextFormField(
-            controller: _signUpFirstNameController,
-            hintText: 'First Name',
-            icon: Icons.person_outline_rounded,
-            validator: (value) {
-              if (value == null || value.trim().isEmpty) return 'Please enter your first name';
-              return null;
-            },
-          ),
-          const SizedBox(height: 16),
-
-          // Last Name
-          _buildTextFormField(
-            controller: _signUpLastNameController,
-            hintText: 'Last Name',
-            icon: Icons.person_outline_rounded,
-            validator: (value) {
-              if (value == null || value.trim().isEmpty) return 'Please enter your last name';
-              return null;
-            },
-          ),
-          const SizedBox(height: 16),
-
-          // Display Name
-          _buildTextFormField(
-            controller: _signUpDisplayNameController,
-            hintText: 'Display Name',
-            icon: Icons.badge_outlined,
-            validator: (value) {
-              if (value == null || value.trim().isEmpty) return 'Please enter a display name';
-              return null;
-            },
-          ),
-          const SizedBox(height: 16),
-
-          // Email
-          _buildTextFormField(
-            controller: _signUpEmailController,
-            hintText: 'Email Address',
-            icon: Icons.email_outlined,
-            validator: _validateEmail,
-          ),
-          const SizedBox(height: 16),
-
-          // Password
-          _buildTextFormField(
-            controller: _signUpPasswordController,
-            hintText: 'Password',
-            icon: Icons.lock_outline_rounded,
-            isObscure: true,
-            validator: (value) {
-              if (value == null || value.isEmpty) return 'Please enter a password';
-              if (value.length < 6) return 'Password must be at least 6 characters long';
-              return null;
-            },
-          ),
-          const SizedBox(height: 16),
-
-          // Gender Dropdown
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(
-              color: AppTheme.darkCard,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.white10),
-            ),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                value: _selectedGender,
-                dropdownColor: AppTheme.darkCard,
-                hint: Row(
-                  children: const [
-                    Icon(Icons.wc_outlined, color: AppTheme.textLight, size: 20),
-                    SizedBox(width: 12),
-                    Text('Gender', style: TextStyle(color: AppTheme.textLight, fontSize: 14)),
-                  ],
+          Row(
+            children: List.generate(3, (index) {
+              return Expanded(
+                child: Container(
+                  height: 4,
+                  margin: EdgeInsets.only(right: index < 2 ? 8.0 : 0.0),
+                  decoration: BoxDecoration(
+                    color: index <= _signUpStep ? AppTheme.primaryOrange : Colors.white10,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
-                icon: const Icon(Icons.keyboard_arrow_down, color: AppTheme.textLight),
-                items: ['MALE', 'FEMALE', 'OTHER'].map((g) {
-                  return DropdownMenuItem(
-                    value: g,
-                    child: Text(g, style: const TextStyle(color: AppTheme.textWhite)),
-                  );
-                }).toList(),
-                onChanged: (value) => setState(() => _selectedGender = value),
+              );
+            }),
+          ),
+          const SizedBox(height: 24),
+
+          if (_signUpStep == 0) ...[
+            _buildTextFormField(
+              controller: _signUpEmailController,
+              hintText: 'Email Address',
+              icon: Icons.email_outlined,
+              validator: _validateEmail,
+              autovalidateMode: _signUpAutovalidateMode,
+            ),
+            const SizedBox(height: 16),
+            _buildTextFormField(
+              controller: _signUpPasswordController,
+              hintText: 'Password',
+              icon: Icons.lock_outline_rounded,
+              isObscure: _obscureSignUpPassword,
+              validator: (value) {
+                if (value == null || value.isEmpty) return 'Please enter a password';
+                if (value.length < 6) return 'Password must be at least 6 characters long';
+                return null;
+              },
+              autovalidateMode: _signUpAutovalidateMode,
+            ),
+            const SizedBox(height: 8),
+            Theme(
+              data: ThemeData(unselectedWidgetColor: AppTheme.textLight),
+              child: CheckboxListTile(
+                title: const Text('Show Password', style: TextStyle(color: AppTheme.textLight, fontSize: 13)),
+                value: !_obscureSignUpPassword,
+                onChanged: (value) {
+                  setState(() {
+                    _obscureSignUpPassword = !value!;
+                  });
+                },
+                controlAffinity: ListTileControlAffinity.leading,
+                contentPadding: EdgeInsets.zero,
+                activeColor: AppTheme.primaryOrange,
+                checkColor: Colors.white,
+                dense: true,
               ),
             ),
-          ),
-          const SizedBox(height: 16),
-
-          // Date of Birth picker
-          GestureDetector(
-            onTap: _pickBirthDate,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+          ] else if (_signUpStep == 1) ...[
+            _buildTextFormField(
+              controller: _signUpFirstNameController,
+              hintText: 'First Name',
+              icon: Icons.person_outline_rounded,
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) return 'Please enter your first name';
+                return null;
+              },
+              autovalidateMode: _signUpAutovalidateMode,
+            ),
+            const SizedBox(height: 16),
+            _buildTextFormField(
+              controller: _signUpLastNameController,
+              hintText: 'Last Name',
+              icon: Icons.person_outline_rounded,
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) return 'Please enter your last name';
+                return null;
+              },
+              autovalidateMode: _signUpAutovalidateMode,
+            ),
+            const SizedBox(height: 16),
+            _buildTextFormField(
+              controller: _signUpDisplayNameController,
+              hintText: 'Display Name',
+              icon: Icons.badge_outlined,
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) return 'Please enter a display name';
+                return null;
+              },
+              autovalidateMode: _signUpAutovalidateMode,
+            ),
+          ] else if (_signUpStep == 2) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
               decoration: BoxDecoration(
                 color: AppTheme.darkCard,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: Colors.white10),
               ),
-              child: Row(
-                children: [
-                  const Icon(Icons.calendar_today_outlined, color: AppTheme.textLight, size: 20),
-                  const SizedBox(width: 12),
-                  Text(
-                    _selectedBirthDate == null
-                        ? 'Date of Birth'
-                        : '${_selectedBirthDate!.year}-${_selectedBirthDate!.month.toString().padLeft(2, '0')}-${_selectedBirthDate!.day.toString().padLeft(2, '0')}',
-                    style: TextStyle(
-                      color: _selectedBirthDate == null ? AppTheme.textLight : AppTheme.textWhite,
-                      fontSize: 14,
-                    ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: _selectedGender,
+                  dropdownColor: AppTheme.darkCard,
+                  hint: Row(
+                    children: const [
+                      Icon(Icons.wc_outlined, color: AppTheme.textLight, size: 20),
+                      Spacer(),
+                      Text('Gender', style: TextStyle(color: AppTheme.textLight, fontSize: 14)),
+                    ],
                   ),
-                ],
+                  icon: const Icon(Icons.keyboard_arrow_down, color: AppTheme.textLight),
+                  items: ['MALE', 'FEMALE', 'OTHER'].map((g) {
+                    return DropdownMenuItem(
+                      value: g,
+                      child: Text(g, style: const TextStyle(color: AppTheme.textWhite)),
+                    );
+                  }).toList(),
+                  onChanged: (value) => setState(() => _selectedGender = value),
+                ),
               ),
             ),
-          ),
+            const SizedBox(height: 16),
+            GestureDetector(
+              onTap: _pickBirthDate,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                decoration: BoxDecoration(
+                  color: AppTheme.darkCard,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white10),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.calendar_today_outlined, color: AppTheme.textLight, size: 20),
+                    const SizedBox(width: 12),
+                    Text(
+                      _selectedBirthDate == null
+                          ? 'Date of Birth'
+                          : '${_selectedBirthDate!.year}-${_selectedBirthDate!.month.toString().padLeft(2, '0')}-${_selectedBirthDate!.day.toString().padLeft(2, '0')}',
+                      style: TextStyle(
+                        color: _selectedBirthDate == null ? AppTheme.textLight : AppTheme.textWhite,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 24),
-
-          _buildActionButton('CREATE ACCOUNT', () => _submitAuthSession(_signUpFormKey)),
+          Row(
+            children: [
+              if (_signUpStep > 0) ...[
+                Expanded(
+                  child: OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Colors.white24),
+                      minimumSize: const Size(0, 52),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    onPressed: _previousSignUpStep,
+                    child: const Text('BACK', style: TextStyle(color: AppTheme.textWhite, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+                const SizedBox(width: 12),
+              ],
+              Expanded(
+                flex: 2,
+                child: _buildActionButton(
+                  _signUpStep == 2 ? 'CREATE ACCOUNT' : 'NEXT',
+                  _nextSignUpStep,
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 24),
         ],
       ),
@@ -419,13 +614,14 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
     required IconData icon,
     bool isObscure = false,
     required String? Function(String?) validator,
+    required AutovalidateMode autovalidateMode,
   }) {
     return TextFormField(
       controller: controller,
       obscureText: isObscure,
       style: const TextStyle(color: AppTheme.textWhite),
       validator: validator,
-      autovalidateMode: AutovalidateMode.onUserInteraction,
+      autovalidateMode: autovalidateMode,
       decoration: InputDecoration(
         hintText: hintText,
         hintStyle: const TextStyle(color: AppTheme.textLight, fontSize: 14),

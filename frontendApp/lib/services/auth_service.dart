@@ -116,4 +116,76 @@ class AuthService {
     String resp = utf8.decode(base64Url.decode(normalized));
     return jsonDecode(resp);
   }
+
+  static Future<bool> refreshToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    final email = prefs.getString('username');
+    final password = prefs.getString('password');
+
+    if (email == null || password == null) return false;
+
+    try {
+      final response = await http.post(
+        Uri.parse(keycloakTokenUrl),
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: {
+          'client_id': 'fitter-app',
+          'grant_type': 'password',
+          'username': email,
+          'password': password,
+        },
+      ).timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        final tokenData = jsonDecode(response.body);
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('token', tokenData['access_token']);
+        return true;
+      }
+    } catch (e) {
+      print('Token refresh failed: $e');
+    }
+    return false;
+  }
+
+  static Future<http.Response> authenticatedGet(Uri url) async {
+    var token = await getToken();
+    var response = await http.get(url,
+        headers: {'Authorization': 'Bearer $token'});
+
+    if (response.statusCode == 401) {
+      final refreshed = await refreshToken();
+      if (refreshed) {
+        token = await getToken();
+        response = await http.get(url,
+            headers: {'Authorization': 'Bearer $token'});
+      }
+    }
+    return response;
+  }
+
+  static Future<http.Response> authenticatedPost(Uri url,
+      {Map<String, dynamic>? body}) async {
+    var token = await getToken();
+    var response = await http.post(url,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json'
+        },
+        body: body != null ? jsonEncode(body) : null);
+
+    if (response.statusCode == 401) {
+      final refreshed = await refreshToken();
+      if (refreshed) {
+        token = await getToken();
+        response = await http.post(url,
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json'
+            },
+            body: body != null ? jsonEncode(body) : null);
+      }
+    }
+    return response;
+  }
 }
