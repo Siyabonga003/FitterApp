@@ -64,7 +64,6 @@ public class UsersController {
                 .onErrorResume(e -> Mono.just(ResponseEntity.notFound().build()));
     }
 
-    // ✅ New endpoint — look up DB user by Keycloak subject ID (used after login to get the real DB userId)
     @Operation(summary = "Get user by Keycloak ID", description = "get user profile by keycloak subject id")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "User profile retrieved successfully"),

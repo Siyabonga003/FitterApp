@@ -152,5 +152,10 @@ public interface ActivitiesDTO {
         private BigDecimal endLat;
         private BigDecimal endLng;
         private String notes;
+        private long likeCount;
+        private long cheerCount;
+        private long commentCount;
+        private boolean currentUserLiked;
+        private boolean currentUserCheered;
     }
 }

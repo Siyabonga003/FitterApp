@@ -75,7 +75,7 @@ public class MetadataServiceImpl implements MetadataService {
     }
 
     @Override
-    @Cacheable(value = "files", key = "#fieldId + #requestedBy")
+    @Cacheable(value = "files", key = "{#fieldId, #requestedBy}")
     public Mono<DataBuffer> getFile(UUID fieldId, UUID requestedBy) {
         return metadataRepository.findById(fieldId)
                 .switchIfEmpty(Mono.error(new RuntimeException("File not found")))
