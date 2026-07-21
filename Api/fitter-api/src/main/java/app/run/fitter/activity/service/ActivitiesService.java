@@ -26,4 +26,6 @@ public interface ActivitiesService {
     Mono<ActivityStatsDto> getStats(UUID userId);
 
     Mono<List<Integer>> getActiveDaysThisWeek(UUID userId);
+
+    Mono<PagedResponse<ActivitiesDTO.FeedActivityResponse>> getFriendsFeed(UUID userId, int page, int size);
 }

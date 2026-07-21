@@ -8,6 +8,7 @@ import app.run.fitter.app.service.UsersService;
 import app.run.fitter.config.ConfigProperties;
 import app.run.fitter.constant.PagedResponse;
 import app.run.fitter.exception.ResourceNotFoundException;
+import app.run.fitter.file.dto.FileContent;
 import app.run.fitter.file.dto.MetadataDTO;
 import app.run.fitter.file.service.MetadataService;
 import lombok.RequiredArgsConstructor;
@@ -15,7 +16,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.CachePut;
 import org.springframework.cache.annotation.Cacheable;
-import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.multipart.FilePart;
 import org.springframework.stereotype.Service;
@@ -40,29 +40,24 @@ public class UsersServiceImpl implements UsersService {
     private final UsersRepository usersRepository;
     private final UsersMapper usersMapper;
     private final ConfigProperties configProperties;
-    private final WebClient webClient = WebClient.create(); // ✅ Single clean instance
+    private final WebClient webClient = WebClient.create();
 
     @Override
     @Transactional
     @CacheEvict(value = "userProfile", allEntries = true)
     public Mono<UsersDTO.UserResponse> createUser(UsersDTO.CreateUserRequest createUserRequest) {
-        // ✅ Provision in Keycloak first to get the real Keycloak-assigned UUID
         return provisionUserInKeycloak(createUserRequest)
                 .flatMap(kcUserId -> {
                     Users entity = usersMapper.toEntity(createUserRequest);
-                    entity.setUserId(kcUserId);    // ✅ Use Keycloak's actual UUID as DB primary key
-                    entity.setKcUserId(kcUserId);  // ✅ Same ID for both
+                    entity.setUserId(kcUserId);
+                    entity.setKcUserId(kcUserId);
                     entity.setNewRecord(true);
                     return usersRepository.save(entity);
                 })
                 .map(usersMapper::toResponse);
     }
 
-    /**
-     * Helper method to interact reactively with the Keycloak Admin REST API endpoints
-     */
     private Mono<UUID> provisionUserInKeycloak(UsersDTO.CreateUserRequest request) {
-        // Step A: Fetch an Admin CLI OAuth token
         String tokenUrl = configProperties.getKeycloakBaseUri()
                 + "/realms/" + configProperties.getClientRealm()
                 + "/protocol/openid-connect/token";
@@ -84,7 +79,6 @@ public class UsersServiceImpl implements UsersService {
                 .bodyToMono(Map.class)
                 .map(response -> (String) response.get("access_token"))
                 .flatMap(adminToken -> {
-                    // Step B: POST the new user to Keycloak Admin API
                     String usersUrl = configProperties.getKeycloakBaseUri()
                             + "/admin/realms/" + configProperties.getClientRealm()
                             + "/users";
@@ -138,13 +132,31 @@ public class UsersServiceImpl implements UsersService {
     }
 
     @Override
+    @Transactional
+    @CacheEvict(value = "userProfile", key = "#userId")
     public Mono<MetadataDTO.MetadataResponse> uploadProfilePicture(UUID userId, FilePart profilePicture) {
-        return metadataService.storeFile(profilePicture, userId);
+        return metadataService.storeFile(profilePicture, userId)
+                .flatMap(metadataResponse ->
+                        usersRepository.findById(userId)
+                                .switchIfEmpty(Mono.error(new ResourceNotFoundException("user", userId.toString())))
+                                .flatMap(user -> {
+                                    String relativeUrl = "/api/v1/users/me/" + userId
+                                            + "/profile-picture/" + metadataResponse.getMetadataId();
+                                    user.setProfilePictureUrl(relativeUrl);
+                                    return usersRepository.save(user);
+                                })
+                                .thenReturn(metadataResponse)
+                );
     }
 
     @Override
-    public Mono<DataBuffer> getProfilePicture(UUID userId, UUID fieldId) {
-        return metadataService.getFile(fieldId, userId);
+    public Mono<FileContent> getProfilePicture(UUID userId, UUID fieldId) {
+        return Mono.zip(
+                        metadataService.getFile(fieldId, userId),
+                        metadataService.getFileMetadata(fieldId)
+                                .switchIfEmpty(Mono.error(new ResourceNotFoundException("file metadata", fieldId.toString())))
+                )
+                .map(tuple -> new FileContent(tuple.getT1(), tuple.getT2().getMimeType()));
     }
 
     @Override

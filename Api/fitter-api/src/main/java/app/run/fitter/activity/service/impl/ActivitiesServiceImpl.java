@@ -15,6 +15,9 @@ import reactor.core.publisher.Mono;
 import reactor.core.publisher.Flux;
 import java.math.BigDecimal;
 import java.util.List;
+import app.run.fitter.app.entity.Users;
+import app.run.fitter.app.repository.UsersRepository;
+import java.util.stream.Collectors;
 
 import java.time.ZonedDateTime;
 import java.util.UUID;
@@ -25,6 +28,7 @@ public class ActivitiesServiceImpl implements ActivitiesService {
 
     private final ActivitiesRepository activitiesRepository;
     private final BadgeEvaluationService badgeEvaluationService;
+    private final UsersRepository usersRepository;
 
     @Override
     public Mono<ActivitiesDTO.ActivityResponse> createActivity(UUID userId,
@@ -59,7 +63,7 @@ public class ActivitiesServiceImpl implements ActivitiesService {
                     if (request.getAvgSpeedKmh() != null)
                         existing.setAvgSpeedKmh(request.getAvgSpeedKmh());
                     if (request.getRouteGeoJson() != null)
-                        existing.setRouteGeoJson(JsonbValue.of(request.getRouteGeoJson()));
+                        existing.setRouteGeoJson(request.getRouteGeoJson());
                     if (request.getStartLat() != null)
                         existing.setStartLat(request.getStartLat());
                     if (request.getStartLng() != null)
@@ -153,7 +157,7 @@ public class ActivitiesServiceImpl implements ActivitiesService {
                 .avgPaceSecPerKm(a.getAvgPaceSecPerKm())
                 .avgSpeedKmh(a.getAvgSpeedKmh())
                 .calories(a.getCalories())
-                .routeGeoJson(a.getRouteGeoJson() != null ? a.getRouteGeoJson().value() : null)
+                .routeGeoJson(a.getRouteGeoJson())
                 .startLat(a.getStartLat())
                 .startLng(a.getStartLng())
                 .endLat(a.getEndLat())
@@ -187,5 +191,53 @@ public class ActivitiesServiceImpl implements ActivitiesService {
     public Mono<List<Integer>> getActiveDaysThisWeek(UUID userId) {
         return activitiesRepository.findActiveDaysThisWeek(userId)
                 .collectList();
+    }
+
+    @Override
+    public Mono<PagedResponse<ActivitiesDTO.FeedActivityResponse>> getFriendsFeed(UUID userId, int page, int size) {
+        int offset = page * size;
+
+        return activitiesRepository.findFriendsFeed(userId, size, offset)
+                .collectList()
+                .flatMap(activities -> {
+                    List<UUID> posterIds = activities.stream()
+                            .map(Activities::getUserId)
+                            .distinct()
+                            .collect(Collectors.toList());
+
+                    return usersRepository.findAllById(posterIds)
+                            .collectMap(Users::getUserId)
+                            .map(usersById -> {
+                                List<ActivitiesDTO.FeedActivityResponse> responses = activities.stream()
+                                        .map(a -> {
+                                            Users poster = usersById.get(a.getUserId());
+                                            return ActivitiesDTO.FeedActivityResponse.builder()
+                                                    .activityId(a.getActivityId())
+                                                    .userId(a.getUserId())
+                                                    .displayName(poster != null ? poster.getDisplayName() : "Unknown")
+                                                    .profilePicUrl(poster != null ? poster.getProfilePictureUrl() : null)
+                                                    .activityTypeId(a.getActivityTypeId())
+                                                    .startedAt(a.getStartedAt())
+                                                    .endedAt(a.getEndedAt())
+                                                    .durationSec(a.getDurationSec())
+                                                    .distanceKm(a.getDistanceKm())
+                                                    .avgPaceSecPerKm(a.getAvgPaceSecPerKm())
+                                                    .avgSpeedKmh(a.getAvgSpeedKmh())
+                                                    .calories(a.getCalories())
+                                                    .routeGeoJson(a.getRouteGeoJson())
+                                                    .startLat(a.getStartLat())
+                                                    .startLng(a.getStartLng())
+                                                    .endLat(a.getEndLat())
+                                                    .endLng(a.getEndLng())
+                                                    .notes(a.getNotes())
+                                                    .build();
+                                        })
+                                        .collect(Collectors.toList());
+
+                                return PagedResponse.<ActivitiesDTO.FeedActivityResponse>builder()
+                                        .content(responses)
+                                        .build();
+                            });
+                });
     }
 } 

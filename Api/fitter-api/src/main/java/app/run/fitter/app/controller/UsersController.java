@@ -19,6 +19,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
+import org.springframework.http.MediaType;
 
 import java.time.LocalDate;
 import java.util.UUID;
@@ -79,6 +80,8 @@ public class UsersController {
                 .onErrorResume(e -> Mono.just(ResponseEntity.notFound().build()));
     }
 
+
+
     @Operation(summary = "Upload profile picture", description = "upload profile picture")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Profile picture uploaded successfully"),
@@ -100,13 +103,14 @@ public class UsersController {
             @ApiResponse(responseCode = "404", description = "Profile picture not retrieved")
     })
     @GetMapping("/me/{userId}/profile-picture/{fieldId}")
-    @PreAuthorize("hasAnyRole('ROLE_USER')")
     public Mono<ResponseEntity<DataBuffer>> getProfilePicture(
             @PathVariable("userId") UUID userId,
             @PathVariable("fieldId") UUID fieldId
     ) {
         return usersService.getProfilePicture(userId, fieldId)
-                .map(ResponseEntity::ok);
+                .map(content -> ResponseEntity.ok()
+                        .contentType(MediaType.parseMediaType(content.mimeType()))
+                        .body(content.data()));
     }
 
     @Operation(summary = "Get user public profile", description = "get user public profile")

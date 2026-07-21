@@ -6,6 +6,8 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.Id;
+import org.springframework.data.annotation.Transient;
+import org.springframework.data.domain.Persistable;
 import org.springframework.data.relational.core.mapping.Table;
 
 import java.time.ZonedDateTime;
@@ -16,7 +18,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Table(schema = "notification", name = "notifications")
-public class Notifications {
+public class Notifications implements Persistable<UUID> {
     @Id
     private UUID notificationId;
     private UUID userId;
@@ -29,4 +31,17 @@ public class Notifications {
     private ZonedDateTime deliveredAt;
     @CreatedDate
     private ZonedDateTime createdAt;
+
+    @Transient
+    private boolean isNewRecord;
+
+    @Override
+    public UUID getId() {
+        return notificationId;
+    }
+
+    @Override
+    public boolean isNew() {
+        return isNewRecord;
+    }
 }

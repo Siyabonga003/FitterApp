@@ -48,18 +48,10 @@ public class DatabaseConfig extends AbstractR2dbcConfiguration {
     @Override
     protected List<Object> getCustomConverters() {
         return List.of(
-                new JsonToJsonbValueConverter(),
                 new JsonbValueToJsonConverter()
         );
     }
 
-    @ReadingConverter
-    static class JsonToJsonbValueConverter implements Converter<Json, JsonbValue> {
-        @Override
-        public JsonbValue convert(Json source) {
-            return JsonbValue.of(source.asString());
-        }
-    }
 
     @WritingConverter
     static class JsonbValueToJsonConverter implements Converter<JsonbValue, Json> {

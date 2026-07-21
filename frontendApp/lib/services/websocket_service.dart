@@ -2,11 +2,13 @@ import 'dart:convert';
 import 'package:stomp_dart_client/stomp.dart';
 import 'package:stomp_dart_client/stomp_config.dart';
 
+import '../core/constants.dart';
+
 class WebSocketService {
   StompClient? _client;
   bool _isConnected = false;
 
-  static const String _baseUrl = '192.168.1.127:9085';
+  static const String _baseUrl = AppConstants.backendBaseUrl;
 
   void connect({
     required String authToken,

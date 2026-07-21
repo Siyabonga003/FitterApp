@@ -56,7 +56,7 @@ public class Activities implements Persistable<UUID> {
     private Integer calories;
 
     @Column("route_geojson")
-    private JsonbValue routeGeoJson;
+    private String routeGeoJson;
 
     @Column("start_lat")
     private BigDecimal startLat;

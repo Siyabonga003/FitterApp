@@ -3,10 +3,12 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:frontend_app/models/auth_model.dart';
 
+import '../core/constants.dart';
+
 class AuthService {
   static const String keycloakTokenUrl =
-      'http://192.168.1.127:8080/realms/FitterAuth/protocol/openid-connect/token';
-  static const String backendBaseUrl = 'http://192.168.1.127:9085';
+      '${AppConstants.keycloakTokenUrl}/realms/FitterAuth/protocol/openid-connect/token';
+  static const String backendBaseUrl = '${AppConstants.backendBaseUrl}';
 
   static Future<AuthResponse?> login(String email, String password) async {
     final url = Uri.parse(keycloakTokenUrl);

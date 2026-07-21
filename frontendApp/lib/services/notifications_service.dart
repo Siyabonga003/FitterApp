@@ -2,8 +2,10 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:frontend_app/services/auth_service.dart';
 
+import '../core/constants.dart';
+
 class NotificationsService {
-  static const String _baseUrl = 'http://192.168.1.127:9085/api/v1/notifications';
+  static const String _baseUrl = '${AppConstants.backendBaseUrl}/api/v1/notifications';
 
   static Future<Map<String, String>> _authHeaders() async {
     final token = await AuthService.getToken();

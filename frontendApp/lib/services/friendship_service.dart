@@ -2,9 +2,10 @@ import 'dart:convert';
 import 'package:frontend_app/models/friendship_model.dart';
 import 'package:frontend_app/services/auth_service.dart';
 import 'package:http/http.dart' as http;
+import '../core/constants.dart';
 
 class FriendshipService {
-  static const String _base = 'http://192.168.1.127:9085/api/v1/friends';
+  static const String _base = '${AppConstants.backendBaseUrl}/api/v1/friends';
 
   static Future<Map<String, String>> _headers() async {
     final token = await AuthService.getToken();
@@ -12,6 +13,22 @@ class FriendshipService {
       'Authorization': 'Bearer $token',
       'Content-Type': 'application/json',
     };
+  }
+
+
+  static Future<List<FriendSearchResult>> getSuggestions() async {
+    try {
+      final headers = await _headers();
+      final response = await http.get(Uri.parse('$_base/suggestions'), headers: headers);
+      if (response.statusCode == 200) {
+        return (jsonDecode(response.body) as List)
+            .map((j) => FriendSearchResult.fromJson(j))
+            .toList();
+      }
+    } catch (e) {
+      print('Error fetching suggestions: $e');
+    }
+    return [];
   }
 
   static Future<List<FriendSearchResult>> searchUsers(String displayName) async {
@@ -34,8 +51,6 @@ class FriendshipService {
       Uri.parse('$_base/request/$toUserId'),
       headers: headers,
     );
-    print('sendRequest status: ${response.statusCode}');
-    print('sendRequest body: ${response.body}');
     if (response.statusCode == 200) {
       return FriendshipResponse.fromJson(jsonDecode(response.body));
     }
@@ -77,8 +92,7 @@ class FriendshipService {
 
   static Future<List<FriendshipResponse>> getIncomingRequests() async {
     final headers = await _headers();
-    final response = await http.get(
-        Uri.parse('$_base/requests/incoming'), headers: headers);
+    final response = await http.get(Uri.parse('$_base/requests/incoming'), headers: headers);
     if (response.statusCode == 200) {
       return (jsonDecode(response.body) as List)
           .map((j) => FriendshipResponse.fromJson(j))
@@ -89,8 +103,7 @@ class FriendshipService {
 
   static Future<List<FriendshipResponse>> getOutgoingRequests() async {
     final headers = await _headers();
-    final response = await http.get(
-        Uri.parse('$_base/requests/outgoing'), headers: headers);
+    final response = await http.get(Uri.parse('$_base/requests/outgoing'), headers: headers);
     if (response.statusCode == 200) {
       return (jsonDecode(response.body) as List)
           .map((j) => FriendshipResponse.fromJson(j))

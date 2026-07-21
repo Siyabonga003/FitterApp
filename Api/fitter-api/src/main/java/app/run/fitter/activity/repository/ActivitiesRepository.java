@@ -7,6 +7,8 @@ import org.springframework.stereotype.Repository;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.math.BigDecimal;
+import java.time.ZonedDateTime;
 import java.util.UUID;
 
 @Repository
@@ -29,7 +31,6 @@ public interface ActivitiesRepository extends R2dbcRepository<Activities, UUID> 
             """)
     Flux<Activities> findAllPublicActivities();
 
-    // All-time aggregated stats
     @Query("""
             SELECT
                 COALESCE(SUM(distance_km), 0) AS total_distance_km,
@@ -43,8 +44,6 @@ public interface ActivitiesRepository extends R2dbcRepository<Activities, UUID> 
             """)
     Mono<ActivityStatsProjection> findStatsByUserId(UUID userId);
 
-    // Returns ISO day of week (1=Mon ... 7=Sun) for each day
-    // the user had an activity this week
     @Query("""
             SELECT DISTINCT EXTRACT(ISODOW FROM started_at)::int AS day_of_week
             FROM activity.activities
@@ -54,4 +53,31 @@ public interface ActivitiesRepository extends R2dbcRepository<Activities, UUID> 
             ORDER BY day_of_week
             """)
     Flux<Integer> findActiveDaysThisWeek(UUID userId);
+
+   @Query("""
+            SELECT COALESCE(SUM(a.distance_km), 0)
+            FROM activity.activities a
+            JOIN grp.group_members gm ON gm.user_id = a.user_id
+            WHERE gm.group_id = :groupId
+              AND gm.status = 'ACTIVE'
+              AND a.started_at >= :periodStart
+              AND a.is_deleted = false
+            """)
+    Mono<BigDecimal> sumDistanceForGroupSince(UUID groupId, ZonedDateTime periodStart);
+
+    @Query("""
+        SELECT a.* FROM activity.activities a
+        JOIN app.friendships f ON (
+            (f.user_id = :userId AND f.friend_id = a.user_id)
+            OR (f.friend_id = :userId AND f.user_id = a.user_id)
+        )
+        WHERE f.status = 'ACCEPTED'
+        AND a.is_deleted = false
+        AND a.visibility_id IN (
+            SELECT visibility_id FROM lookup.visibilities WHERE code IN ('PUBLIC', 'FRIENDS')
+        )
+        ORDER BY a.started_at DESC
+        LIMIT :limit OFFSET :offset
+        """)
+        Flux<Activities> findFriendsFeed(UUID userId, int limit, int offset);
 }

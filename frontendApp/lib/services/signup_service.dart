@@ -1,8 +1,10 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
+import '../core/constants.dart';
+
 class SignupService {
-  static const String baseUrl = 'http://192.168.1.127:9085';
+  static const String baseUrl = '${AppConstants.backendBaseUrl}';
 
   static Future<bool> registerUser({
     required String email,

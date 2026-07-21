@@ -7,12 +7,11 @@ import org.mapstruct.Mapping;
 import org.mapstruct.NullValuePropertyMappingStrategy;
 
 import java.time.ZonedDateTime;
-import java.util.UUID;
 
 @Mapper(
         componentModel = "spring",
         nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE,
-        uses = { ZonedDateTime.class, UUID.class }
+        imports = { ZonedDateTime.class }
 )
 public interface MetadataMapper {
     @Mapping(target = "metadataId", ignore = true)

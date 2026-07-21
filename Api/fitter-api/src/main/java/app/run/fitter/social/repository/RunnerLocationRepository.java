@@ -34,4 +34,28 @@ public interface RunnerLocationRepository extends ReactiveCrudRepository<RunnerL
     @Modifying
     @Query("DELETE FROM social.runner_locations WHERE updated_at < :cutoff")
     Mono<Void> deleteStaleLocations(Instant cutoff);
+
+    @Query("""
+            SELECT
+                rl.user_id,
+                rl.latitude,
+                rl.longitude,
+                rl.pace_km_per_min,
+                rl.distance_km,
+                rl.sharing_live,
+                rl.updated_at,
+                u.display_name
+            FROM social.runner_locations rl
+            JOIN app.users u ON u.user_id = rl.user_id::uuid
+            WHERE rl.updated_at > :since
+            ORDER BY rl.updated_at DESC
+            """)
+    Flux<RunnerLocation> findAllLivePresence(Instant since);
+
+    @Query("""
+            SELECT COUNT(*)
+            FROM social.runner_locations
+            WHERE updated_at > :since
+            """)
+    Mono<Long> countLivePresence(Instant since);
 }

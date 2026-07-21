@@ -3,6 +3,10 @@ import 'package:frontend_app/theme/app_theme.dart';
 import 'package:frontend_app/models/group_model.dart';
 import 'package:frontend_app/services/groups_services.dart';
 import 'package:frontend_app/services/auth_service.dart';
+import 'package:frontend_app/screens/groups/create_group_screen.dart';
+import 'package:frontend_app/screens/groups/group_detail_screen.dart';
+
+import 'join_group_screen.dart';
 
 class GroupsScreen extends StatefulWidget {
   const GroupsScreen({super.key});
@@ -51,22 +55,58 @@ class _GroupsScreenState extends State<GroupsScreen> {
         child: Column(
           children: [
             const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: AppTheme.primaryOrange, width: 1.5),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            Row(
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    height: 40,
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: AppTheme.primaryOrange, width: 1.2),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      icon: const Icon(Icons.add_rounded, size: 18, color: AppTheme.primaryOrange),
+                      label: const Text(
+                        'Create',
+                        style: TextStyle(color: AppTheme.primaryOrange, fontWeight: FontWeight.w600, fontSize: 13),
+                      ),
+                      onPressed: () async {
+                        final created = await Navigator.of(context).push<bool>(
+                          MaterialPageRoute(builder: (_) => const CreateGroupScreen()),
+                        );
+                        if (created == true) {
+                          _loadGroupsWithToken();
+                        }
+                      },
+                    ),
+                  ),
                 ),
-                icon: const Icon(Icons.add_rounded, color: AppTheme.primaryOrange),
-                label: const Text(
-                  'Create Group',
-                  style: TextStyle(color: AppTheme.primaryOrange, fontWeight: FontWeight.bold, fontSize: 15),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: SizedBox(
+                    height: 40,
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: AppTheme.primaryOrange, width: 1.2),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      icon: const Icon(Icons.qr_code_rounded, size: 18, color: AppTheme.primaryOrange),
+                      label: const Text(
+                        'Join with Code',
+                        style: TextStyle(color: AppTheme.primaryOrange, fontWeight: FontWeight.w600, fontSize: 13),
+                      ),
+                      onPressed: () async {
+                        final joined = await Navigator.of(context).push<bool>(
+                          MaterialPageRoute(builder: (_) => const JoinGroupScreen()),
+                        );
+                        if (joined == true) {
+                          _loadGroupsWithToken();
+                        }
+                      },
+                    ),
+                  ),
                 ),
-                onPressed: () {
-                },
-              ),
+              ],
             ),
             const SizedBox(height: 20),
 
@@ -100,7 +140,19 @@ class _GroupsScreenState extends State<GroupsScreen> {
                     itemBuilder: (context, index) {
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 16.0),
-                        child: GroupCard(group: groups[index]),
+                        child: GestureDetector(
+                          onTap: () async {
+                            final result = await Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => GroupDetailScreen(groupId: groups[index].id),
+                              ),
+                            );
+                            if (result == true) {
+                              _loadGroupsWithToken();
+                            }
+                          },
+                          child: GroupCard(group: groups[index]),
+                        ),
                       );
                     },
                   );
@@ -164,20 +216,22 @@ class GroupCard extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(group.progressLabel, style: const TextStyle(color: AppTheme.textLight, fontSize: 13)),
-                Text(group.percentageText, style: const TextStyle(color: AppTheme.primaryOrange, fontWeight: FontWeight.bold, fontSize: 13)),
+                if (group.hasGoal)
+                  Text(group.percentageText, style: const TextStyle(color: AppTheme.primaryOrange, fontWeight: FontWeight.bold, fontSize: 13)),
               ],
             ),
             const SizedBox(height: 8),
 
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: LinearProgressIndicator(
-                value: group.progressValue,
-                minHeight: 8,
-                backgroundColor: Colors.white10,
-                valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.primaryOrange),
+            if (group.hasGoal)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: LinearProgressIndicator(
+                  value: group.progressValue,
+                  minHeight: 8,
+                  backgroundColor: Colors.white10,
+                  valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.primaryOrange),
+                ),
               ),
-            ),
           ],
         ),
       ),

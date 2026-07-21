@@ -125,4 +125,32 @@ public interface ActivitiesDTO {
         private BigDecimal endLng;
         private String notes;
     }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    class FeedActivityResponse {
+        private UUID activityId;
+        private UUID userId;
+        private String displayName;
+        private String profilePicUrl;
+        private Short activityTypeId;
+        @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss.SSSZ")
+        private ZonedDateTime startedAt;
+        @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss.SSSZ")
+        private ZonedDateTime endedAt;
+        private Integer durationSec;
+        private BigDecimal distanceKm;
+        private Integer avgPaceSecPerKm;
+        private BigDecimal avgSpeedKmh;
+        private Integer calories;
+        private String routeGeoJson;
+        private BigDecimal startLat;
+        private BigDecimal startLng;
+        private BigDecimal endLat;
+        private BigDecimal endLng;
+        private String notes;
+    }
 }

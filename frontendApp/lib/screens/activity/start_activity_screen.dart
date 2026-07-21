@@ -50,14 +50,14 @@ class _StartActivityScreenState extends State<StartActivityScreen> {
           return;
         }
 
-        // ✅ Navigate to ActiveRunScreen with the real activityId and userId
+        // ✅ Navigate with the required activityTypeId
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
             builder: (_) => ActiveRunScreen(
               activityId: activityId,
               userId: userId,
-              activityType: _selectedActivity,
+              activityTypeId: _selectedTypeId,
             ),
           ),
         );

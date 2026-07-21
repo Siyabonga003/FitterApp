@@ -48,6 +48,7 @@ public class SecurityConfig {
                 .authorizeExchange(exchange -> exchange
                         .pathMatchers(
                                 "/api/v1/auth/**",
+                                "/api/v1/users/me/*/profile-picture/*",
                                 "/api/v1/users",
                                 "/v3/api-docs",
                                 "/v3/api-docs/**",

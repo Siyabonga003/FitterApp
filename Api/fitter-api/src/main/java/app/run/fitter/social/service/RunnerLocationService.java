@@ -38,4 +38,12 @@ public class RunnerLocationService {
     public Flux<RunnerLocation> getLiveFriendLocations(List<String> friendIds) {
         return repository.findLiveFriends(friendIds);
     }
+
+    public Flux<RunnerLocation> getAllLivePresence() {
+        return repository.findAllLivePresence(Instant.now().minusSeconds(300));
+    }
+
+    public Mono<Long> getLivePresenceCount() {
+        return repository.countLivePresence(Instant.now().minusSeconds(300));
+    }
 }

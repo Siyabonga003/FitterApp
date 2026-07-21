@@ -1,7 +1,24 @@
+import 'dart:convert';
+
+class RoutePoint {
+  final double lat;
+  final double lng;
+
+  RoutePoint({required this.lat, required this.lng});
+
+  factory RoutePoint.fromJson(Map<String, dynamic> json) {
+    return RoutePoint(
+      lat: (json['lat'] as num?)?.toDouble() ?? 0.0,
+      lng: (json['lng'] as num?)?.toDouble() ?? 0.0,
+    );
+  }
+}
+
 class Activity {
   final String activityId;
   final String userId;
   final String username;
+  final String? profilePicUrl;
   final String timeAgo;
   final String activityTitle;
   final String distance;
@@ -10,11 +27,13 @@ class Activity {
   final int activityTypeId;
   final bool isLive;
   final String? routeGeoJson;
+  final List<RoutePoint> routePoints;
 
   Activity({
     required this.activityId,
     required this.userId,
     required this.username,
+    this.profilePicUrl,
     required this.timeAgo,
     required this.activityTitle,
     required this.distance,
@@ -23,6 +42,7 @@ class Activity {
     required this.activityTypeId,
     required this.isLive,
     required this.routeGeoJson,
+    required this.routePoints,
   });
 
   factory Activity.fromJson(Map<String, dynamic> json) {
@@ -50,7 +70,7 @@ class Activity {
       paceStr = '$pm:${ps.toString().padLeft(2, '0')} /km';
     }
 
-    final createdAtStr = json['createdAt'] as String?;
+    final createdAtStr = json['startedAt'] as String? ?? json['createdAt'] as String?;
     String timeAgo = 'Just now';
     if (createdAtStr != null) {
       try {
@@ -68,10 +88,27 @@ class Activity {
 
     final typeId = json['activityTypeId'] as int? ?? 1;
 
+    final rawRouteGeoJson = json['routeGeoJson'] as String?;
+    List<RoutePoint> parsedPoints = [];
+    if (rawRouteGeoJson != null && rawRouteGeoJson.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(rawRouteGeoJson);
+        if (decoded is List) {
+          parsedPoints = decoded
+              .whereType<Map<String, dynamic>>()
+              .map((p) => RoutePoint.fromJson(p))
+              .toList();
+        }
+      } catch (_) {
+        // malformed or unexpected geojson shape — leave points empty, UI falls back gracefully
+      }
+    }
+
     return Activity(
       activityId: json['activityId']?.toString() ?? '',
       userId: json['userId']?.toString() ?? '',
-      username: json['username'] ?? 'Unknown',
+      username: json['displayName'] ?? json['username'] ?? 'Unknown',
+      profilePicUrl: json['profilePicUrl'] as String?,
       timeAgo: timeAgo,
       activityTitle: _activityTypeLabel(typeId),
       distance: distanceStr,
@@ -79,7 +116,8 @@ class Activity {
       pace: paceStr,
       activityTypeId: typeId,
       isLive: json['isLive'] ?? false,
-      routeGeoJson: json['routeGeoJson'] as String?,
+      routeGeoJson: rawRouteGeoJson,
+      routePoints: parsedPoints,
     );
   }
 

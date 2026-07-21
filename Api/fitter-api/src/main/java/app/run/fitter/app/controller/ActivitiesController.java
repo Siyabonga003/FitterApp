@@ -95,7 +95,7 @@ public class ActivitiesController {
         @PathVariable UUID userId) {
     return activitiesService.getStats(userId)
             .map(ResponseEntity::ok);
-}
+        }
    @Operation(summary = "Get active days this week")
    @GetMapping("/user/{userId}/active-days")
    @PreAuthorize("hasAnyRole('ROLE_USER')")
@@ -103,7 +103,19 @@ public class ActivitiesController {
                 @PathVariable UUID userId) {
         return activitiesService.getActiveDaysThisWeek(userId)
                 .map(ResponseEntity::ok);
-}
+        }
+
+        @Operation(summary = "Get friends activity feed")
+        @GetMapping("/user/{userId}/feed")
+        @PreAuthorize("hasAnyRole('ROLE_USER')")
+        public Mono<ResponseEntity<PagedResponse<ActivitiesDTO.FeedActivityResponse>>> getFriendsFeed(
+                @PathVariable UUID userId,
+                @RequestParam(defaultValue = "0") int page,
+                @RequestParam(defaultValue = "20") int size
+        ) {
+        return activitiesService.getFriendsFeed(userId, page, size)
+                .map(ResponseEntity::ok);
+        }
 
 
 }

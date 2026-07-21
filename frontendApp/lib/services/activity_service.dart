@@ -2,12 +2,13 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:frontend_app/services/auth_service.dart';
 
+import '../core/constants.dart';
+
 class ActivityService {
-  static const String _baseUrl = 'http://192.168.1.127:9085/api/v1/activities';
+  static const String _baseUrl = '${AppConstants.backendBaseUrl}/api/v1/activities';
 
   static Future<Map<String, String>> _authHeaders() async {
     final token = await AuthService.getToken();
-    print('DEBUG ActivityService — token: $token'); // Temporary debug
     return {
       'Authorization': 'Bearer $token',
       'Content-Type': 'application/json',
@@ -15,7 +16,6 @@ class ActivityService {
   }
 
   static Future<List<dynamic>> getActivities(String userId) async {
-    print('DEBUG ActivityService — getActivities userId: $userId'); // Temporary debug
     final headers = await _authHeaders();
     final url = Uri.parse('$_baseUrl/user/$userId');
 
@@ -28,6 +28,24 @@ class ActivityService {
       return data['content'] ?? [];
     } else {
       print('getActivities failed: ${response.statusCode}');
+      print('Body: ${response.body}');
+      return [];
+    }
+  }
+
+  static Future<List<dynamic>> getFriendsFeed(String userId, {int page = 0, int size = 20}) async {
+    final headers = await _authHeaders();
+    final url = Uri.parse('$_baseUrl/user/$userId/feed?page=$page&size=$size');
+
+    final response = await http
+        .get(url, headers: headers)
+        .timeout(const Duration(seconds: 10));
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return data['content'] ?? [];
+    } else {
+      print('getFriendsFeed failed: ${response.statusCode}');
       print('Body: ${response.body}');
       return [];
     }
@@ -85,7 +103,6 @@ class ActivityService {
       return null;
     }
   }
-
 
   static Future<Map<String, dynamic>?> endActivity(
       String userId, String activityId, Map<String, dynamic> body) async {

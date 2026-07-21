@@ -1,240 +1,112 @@
 import 'package:flutter/material.dart';
-import 'package:frontend_app/theme/app_theme.dart';
+import '../../models/leaderboard_user.dart';
+import '../../theme/app_theme.dart';
+import 'avatar_with_progress.dart';
+import 'leaderboard_rank_change.dart';
 
 class LeaderboardTile extends StatelessWidget {
-  final int rank;
-  final String name;
-  final String km;
-  final int activities;
-  final int trend;
-  final bool isCurrentUser;
-  final String? imageUrl;
+  final LeaderboardUser user;
+  final VoidCallback onTap;
 
   const LeaderboardTile({
     super.key,
-    required this.rank,
-    required this.name,
-    required this.km,
-    required this.activities,
-    required this.trend,
-    this.isCurrentUser = false,
-    this.imageUrl,
+    required this.user,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 250),
-      padding: const EdgeInsets.all(18),
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
       decoration: BoxDecoration(
-        color: isCurrentUser
-            ? AppTheme.primaryNeon.withOpacity(.08)
-            : (isDark ? AppTheme.darkCard : Colors.white),
-        borderRadius: BorderRadius.circular(22),
-        border: isCurrentUser
-            ? Border.all(
-          color: AppTheme.primaryNeon,
-          width: 1.5,
-        )
-            : null,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(.04),
-            blurRadius: 16,
-            offset: const Offset(0, 8),
-          )
-        ],
+        color: isDark ? AppTheme.darkCard : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: isDark ? Colors.white10 : Colors.black.withOpacity(0.04)),
       ),
-
-      child: Row(
-        children: [
-
-          // Rank
-
-          SizedBox(
-            width: 34,
-            child: Text(
-              "#$rank",
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey.shade500,
-              ),
-            ),
-          ),
-
-          const SizedBox(width: 12),
-
-          // Avatar
-
-          Hero(
-            tag: "leader_$rank",
-            child: CircleAvatar(
-              radius: 26,
-              backgroundColor: AppTheme.primaryNeon,
-
-              backgroundImage: imageUrl != null
-                  ? NetworkImage(imageUrl!)
-                  : null,
-
-              child: imageUrl == null
-                  ? Text(
-                name[0],
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black,
-                ),
-              )
-                  : null,
-            ),
-          ),
-
-          const SizedBox(width: 16),
-
-          // Name + subtitle
-
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
               children: [
-
-                Row(
-                  children: [
-
-                    Flexible(
-                      child: Text(
-                        name,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.bold,
-                          color: isDark
-                              ? Colors.white
-                              : Colors.black87,
-                        ),
-                      ),
+                SizedBox(
+                  width: 30,
+                  child: Text(
+                    '#${user.rank}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      color: isDark ? Colors.white70 : AppTheme.textDark.withOpacity(0.7),
                     ),
-
-                    const SizedBox(width: 5),
-
-                    if (rank <= 3)
-                      const Icon(
-                        Icons.verified,
-                        size: 16,
-                        color: Colors.blue,
-                      ),
-                  ],
+                  ),
                 ),
-
-                const SizedBox(height: 6),
-
-                Row(
+                AvatarWithProgress(
+                  imageUrl: user.profileImage,
+                  progress: user.goalProgress,
+                  size: 42,
+                  isVerified: user.isVerified,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        user.name,
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 14),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Text(
+                            '🏃 ${user.activitiesCount} Runs',
+                            style: const TextStyle(fontSize: 11, color: AppTheme.textLight),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            '🔥 ${user.streakDays}d',
+                            style: const TextStyle(fontSize: 11, color: AppTheme.textLight),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-
-                    Icon(
-                      Icons.directions_run,
-                      size: 15,
-                      color: Colors.grey.shade500,
-                    ),
-
-                    const SizedBox(width: 5),
-
-                    Text(
-                      "$activities Activities",
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                        fontWeight: FontWeight.w500,
+                    RichText(
+                      text: TextSpan(
+                        children: [
+                          TextSpan(
+                            text: user.distanceKm.toStringAsFixed(1),
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              color: isDark ? Colors.white : AppTheme.textDark,
+                            ),
+                          ),
+                          const TextSpan(
+                            text: ' km',
+                            style: TextStyle(fontSize: 11, color: AppTheme.textLight),
+                          ),
+                        ],
                       ),
                     ),
+                    const SizedBox(height: 2),
+                    LeaderboardRankChange(trend: user.trend, amount: user.trendAmount),
                   ],
                 ),
               ],
             ),
           ),
-
-          const SizedBox(width: 10),
-
-          // Distance + Trend
-
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-
-              RichText(
-                text: TextSpan(
-                  children: [
-
-                    TextSpan(
-                      text: km,
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: isDark
-                            ? Colors.white
-                            : Colors.black,
-                      ),
-                    ),
-
-                    TextSpan(
-                      text: " km",
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey.shade500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 6),
-
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-
-                  if (trend > 0)
-                    const Icon(
-                      Icons.arrow_upward_rounded,
-                      color: Colors.green,
-                      size: 16,
-                    ),
-
-                  if (trend < 0)
-                    const Icon(
-                      Icons.arrow_downward_rounded,
-                      color: Colors.red,
-                      size: 16,
-                    ),
-
-                  if (trend == 0)
-                    const Icon(
-                      Icons.remove,
-                      color: Colors.grey,
-                      size: 16,
-                    ),
-
-                  const SizedBox(width: 3),
-
-                  Text(
-                    trend == 0
-                        ? "--"
-                        : trend.abs().toString(),
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: trend > 0
-                          ? Colors.green
-                          : trend < 0
-                          ? Colors.red
-                          : Colors.grey,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          )
-        ],
+        ),
       ),
     );
   }

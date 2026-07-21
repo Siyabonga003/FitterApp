@@ -8,6 +8,7 @@ class RunnerLocation {
   final double paceKmPerMin;
   final double distanceKm;
   final bool sharingLive;
+  final int? activityTypeId;
   final List<LatLng> trail;
 
   RunnerLocation({
@@ -18,6 +19,7 @@ class RunnerLocation {
     required this.paceKmPerMin,
     required this.distanceKm,
     required this.sharingLive,
+    this.activityTypeId,
     this.trail = const [],
   });
 
@@ -30,6 +32,7 @@ class RunnerLocation {
       paceKmPerMin: (json['paceKmPerMin'] ?? 0).toDouble(),
       distanceKm: (json['distanceKm'] ?? 0).toDouble(),
       sharingLive: json['sharingLive'] ?? false,
+      activityTypeId: json['activityTypeId'] as int?,
       trail: const [],
     );
   }
@@ -44,6 +47,7 @@ class RunnerLocation {
       paceKmPerMin: paceKmPerMin,
       distanceKm: distanceKm,
       sharingLive: sharingLive,
+      activityTypeId: activityTypeId,
       trail: newTrail,
     );
   }

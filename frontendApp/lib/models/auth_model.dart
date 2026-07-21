@@ -9,7 +9,6 @@ class AuthResponse {
     required this.username,
   });
 
-  // Maps the incoming backend login response keys directly
   factory AuthResponse.fromJson(Map<String, dynamic> json) {
     return AuthResponse(
       token: json['token'] ?? '',

@@ -1,7 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:frontend_app/models/friendship_model.dart';
 import 'package:frontend_app/services/friendship_service.dart';
 import 'package:frontend_app/theme/app_theme.dart';
+import 'package:frontend_app/screens/friends/widgets/discover_tab.dart';
+import 'package:frontend_app/screens/friends/widgets/friends_list_tab.dart';
+import 'package:frontend_app/screens/friends/widgets/requests_list_tab.dart';
 
 class FriendsScreen extends StatefulWidget {
   const FriendsScreen({super.key});
@@ -10,371 +14,285 @@ class FriendsScreen extends StatefulWidget {
   State<FriendsScreen> createState() => _FriendsScreenState();
 }
 
-class _FriendsScreenState extends State<FriendsScreen>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-  final TextEditingController _searchController = TextEditingController();
-
+class _FriendsScreenState extends State<FriendsScreen> {
   List<FriendshipResponse> _friends = [];
   List<FriendshipResponse> _incoming = [];
   List<FriendshipResponse> _outgoing = [];
-  List<FriendSearchResult> _searchResults = [];
+  List<FriendSearchResult> _discoverItems = [];
 
-  bool _isLoading = true;
+  bool _isMainLoading = false;
+  bool _isDiscoverLoading = false;
   bool _isSearching = false;
+
+  final TextEditingController _searchController = TextEditingController();
+  Timer? _debounce;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
-    _loadAll();
+    _fetchAllData();
+    _loadInitialSuggestions();
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
     _searchController.dispose();
+    _debounce?.cancel();
     super.dispose();
   }
 
-  Future<void> _loadAll() async {
-    setState(() => _isLoading = true);
-    final results = await Future.wait([
-      FriendshipService.getFriends(),
-      FriendshipService.getIncomingRequests(),
-      FriendshipService.getOutgoingRequests(),
-    ]);
-    if (mounted) {
+  Future<void> _fetchAllData() async {
+    setState(() => _isMainLoading = true);
+    try {
+      final resFriends = await FriendshipService.getFriends();
+      final resIncoming = await FriendshipService.getIncomingRequests();
+      final resOutgoing = await FriendshipService.getOutgoingRequests();
       setState(() {
-        _friends = results[0] as List<FriendshipResponse>;
-        _incoming = results[1] as List<FriendshipResponse>;
-        _outgoing = results[2] as List<FriendshipResponse>;
-        _isLoading = false;
+        _friends = resFriends;
+        _incoming = resIncoming;
+        _outgoing = resOutgoing;
+      });
+    } finally {
+      setState(() => _isMainLoading = false);
+    }
+  }
+
+  Future<void> _loadInitialSuggestions() async {
+    if (_isSearching) return;
+    setState(() => _isDiscoverLoading = true);
+    final suggestions = await FriendshipService.getSuggestions();
+    if (!_isSearching) {
+      setState(() {
+        _discoverItems = suggestions;
+        _isDiscoverLoading = false;
       });
     }
   }
 
-  Future<void> _search(String query) async {
-    if (query.trim().isEmpty) {
-      setState(() => _searchResults = []);
-      return;
-    }
-    setState(() => _isSearching = true);
-    final results = await FriendshipService.searchUsers(query.trim());
-    if (mounted) setState(() {
-      _searchResults = results;
-      _isSearching = false;
+  void _onSearchChanged(String value) {
+    if (_debounce?.isActive ?? false) _debounce!.cancel();
+    _debounce = Timer(const Duration(milliseconds: 500), () async {
+      final query = value.trim();
+      if (query.isEmpty) {
+        setState(() => _isSearching = false);
+        _loadInitialSuggestions();
+        return;
+      }
+
+      setState(() {
+        _isSearching = true;
+        _isDiscoverLoading = true;
+      });
+
+      final results = await FriendshipService.searchUsers(query);
+      setState(() {
+        _discoverItems = results;
+        _isDiscoverLoading = false;
+      });
     });
   }
 
-  Future<void> _sendRequest(String toUserId) async {
-    await FriendshipService.sendRequest(toUserId);
-    await _search(_searchController.text);
-    _showSnack('Friend request sent!');
+  Future<void> _handleSendRequest(String userId) async {
+    final result = await FriendshipService.sendRequest(userId);
+    if (result != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Friend request sent successfully!')),
+      );
+      _fetchAllData();
+      if (_searchController.text.isNotEmpty) {
+        _onSearchChanged(_searchController.text);
+      } else {
+        _loadInitialSuggestions();
+      }
+    }
   }
 
-  Future<void> _accept(String friendshipId) async {
-    await FriendshipService.acceptRequest(friendshipId);
-    await _loadAll();
-    _showSnack('Friend request accepted!');
+  Future<void> _handleAccept(String friendshipId) async {
+    final res = await FriendshipService.acceptRequest(friendshipId);
+    if (res != null) _fetchAllData();
   }
 
-  Future<void> _decline(String friendshipId) async {
+  Future<void> _handleDecline(String friendshipId) async {
     await FriendshipService.declineRequest(friendshipId);
-    await _loadAll();
+    _fetchAllData();
   }
 
-  Future<void> _unfriend(String friendId) async {
-    await FriendshipService.unfriend(friendId);
-    await _loadAll();
+  Future<void> _handleUnfriend(String id, String name) async {
+    final confirm = await _showConfirmDialog('Unfriend $name', 'Are you sure you want to remove them?');
+    if (confirm == true) {
+      await FriendshipService.unfriend(id);
+      _fetchAllData();
+    }
   }
 
-  void _showSnack(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg),
-        backgroundColor: AppTheme.primaryOrange,
-        behavior: SnackBarBehavior.floating,
+  Future<void> _handleCancelRequest(String id, String name) async {
+    final confirm = await _showConfirmDialog('Cancel Request', 'Cancel sent request to $name?');
+    if (confirm == true) {
+      await FriendshipService.unfriend(id);
+      _fetchAllData();
+    }
+  }
+
+  Future<bool?> _showConfirmDialog(String title, String message) {
+    return showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+        decoration: BoxDecoration(
+          color: AppTheme.darkCard,
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(24),
+            topRight: Radius.circular(24),
+          ),
+          border: Border.all(
+            color: Colors.white.withOpacity(0.05),
+            width: 1,
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 24),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            Text(
+              title.toUpperCase(),
+              style: const TextStyle(
+                color: AppTheme.textWhite,
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.1,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              message,
+              style: const TextStyle(
+                color: AppTheme.textLight,
+                fontSize: 14,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 28),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppTheme.textWhite,
+                      side: BorderSide(color: Colors.white.withOpacity(0.1)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text(
+                      'Cancel',
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                // Action Destruction Option
+                Expanded(
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.danger.withOpacity(0.15),
+                      foregroundColor: AppTheme.danger,
+                      elevation: 0,
+                      side: BorderSide(color: AppTheme.danger.withOpacity(0.3)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    onPressed: () => Navigator.pop(ctx, true),
+                    child: const Text(
+                      'Confirm',
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Text(
+        title,
+        style: const TextStyle(color: AppTheme.textLight, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.2),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppTheme.darkBg,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: const Text('Friends',
-            style: TextStyle(fontWeight: FontWeight.bold)),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded,
-              color: AppTheme.textWhite),
-          onPressed: () => Navigator.pop(context),
-        ),
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: AppTheme.primaryOrange,
-          labelColor: AppTheme.primaryOrange,
-          unselectedLabelColor: AppTheme.textLight,
-          tabs: [
-            Tab(text: 'Friends (${_friends.length})'),
-            Tab(text: 'Requests (${_incoming.length})'),
-            const Tab(text: 'Find'),
-          ],
-        ),
-      ),
-      body: _isLoading
-          ? const Center(
-          child: CircularProgressIndicator(
-              color: AppTheme.primaryOrange))
-          : TabBarView(
-        controller: _tabController,
-        children: [
-          _buildFriendsList(),
-          _buildRequestsList(),
-          _buildSearchTab(),
-        ],
-      ),
-    );
-  }
+    final int requestCount = _incoming.length + _outgoing.length;
 
-  Widget _buildFriendsList() {
-    if (_friends.isEmpty) {
-      return const Center(
-        child: Text('No friends yet — go find some! 🏃',
-            style: TextStyle(color: AppTheme.textLight, fontSize: 14)),
-      );
-    }
-    return RefreshIndicator(
-      onRefresh: _loadAll,
-      color: AppTheme.primaryOrange,
-      child: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: _friends.length,
-        itemBuilder: (context, index) {
-          final f = _friends[index];
-          final otherId =
-              f.userId; // resolved by backend to the other person
-          return _userCard(
-            initial: f.initial,
-            displayName: f.displayName,
-            subtitle: f.email,
-            trailing: TextButton(
-              onPressed: () => _unfriend(otherId),
-              child: const Text('Unfriend',
-                  style: TextStyle(color: AppTheme.danger)),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildRequestsList() {
-    return RefreshIndicator(
-      onRefresh: _loadAll,
-      color: AppTheme.primaryOrange,
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          if (_incoming.isNotEmpty) ...[
-            _sectionHeader('INCOMING'),
-            ..._incoming.map((f) => _userCard(
-              initial: f.initial,
-              displayName: f.displayName,
-              subtitle: f.email,
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.check_circle_rounded,
-                        color: Colors.green),
-                    onPressed: () => _accept(f.friendshipId),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.cancel_rounded,
-                        color: AppTheme.danger),
-                    onPressed: () => _decline(f.friendshipId),
-                  ),
-                ],
-              ),
-            )),
-          ],
-          if (_outgoing.isNotEmpty) ...[
-            _sectionHeader('SENT'),
-            ..._outgoing.map((f) => _userCard(
-              initial: f.initial,
-              displayName: f.displayName,
-              subtitle: 'Request pending',
-              trailing: TextButton(
-                onPressed: () => _unfriend(f.friendId),
-                child: const Text('Withdraw',
-                    style: TextStyle(color: AppTheme.textLight)),
-              ),
-            )),
-          ],
-          if (_incoming.isEmpty && _outgoing.isEmpty)
-            const Center(
-              child: Padding(
-                padding: EdgeInsets.only(top: 60),
-                child: Text('No pending requests',
-                    style: TextStyle(
-                        color: AppTheme.textLight, fontSize: 14)),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSearchTab() {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: TextField(
-            controller: _searchController,
-            style: const TextStyle(color: AppTheme.textWhite),
-            decoration: InputDecoration(
-              hintText: 'Search by display name...',
-              hintStyle: const TextStyle(color: AppTheme.textLight),
-              prefixIcon: const Icon(Icons.search_rounded,
-                  color: AppTheme.textLight),
-              filled: true,
-              fillColor: AppTheme.darkCard,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(24),
-                borderSide: BorderSide.none,
-              ),
-              suffixIcon: _searchController.text.isNotEmpty
-                  ? IconButton(
-                icon: const Icon(Icons.clear_rounded,
-                    color: AppTheme.textLight),
-                onPressed: () {
-                  _searchController.clear();
-                  setState(() => _searchResults = []);
-                },
-              )
-                  : null,
-            ),
-            onChanged: _search,
+    return DefaultTabController(
+      length: 3,
+      child: Scaffold(
+        backgroundColor: AppTheme.darkBg,
+        appBar: AppBar(
+          backgroundColor: AppTheme.darkBg,
+          elevation: 0,
+          title: const Text('Community', style: TextStyle(color: AppTheme.textWhite, fontWeight: FontWeight.bold)),
+          bottom: TabBar(
+            indicatorColor: AppTheme.primaryOrange,
+            labelColor: AppTheme.primaryOrange,
+            unselectedLabelColor: AppTheme.textLight,
+            tabs: [
+              const Tab(text: 'Friends'),
+              Tab(text: requestCount > 0 ? 'Requests ($requestCount)' : 'Requests'),
+              const Tab(text: 'Discover'),
+            ],
           ),
         ),
-        if (_isSearching)
-          const CircularProgressIndicator(color: AppTheme.primaryOrange)
-        else
-          Expanded(
-            child: _searchResults.isEmpty
-                ? Center(
-              child: Text(
-                _searchController.text.isEmpty
-                    ? 'Search for runners by name'
-                    : 'No users found',
-                style: const TextStyle(
-                    color: AppTheme.textLight, fontSize: 14),
-              ),
-            )
-                : ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: _searchResults.length,
-              itemBuilder: (context, index) {
-                final u = _searchResults[index];
-                return _userCard(
-                  initial: u.initial,
-                  displayName: u.displayName,
-                  subtitle: u.bio ?? u.email,
-                  trailing: _requestButton(u),
-                );
-              },
+        body: _isMainLoading && _friends.isEmpty
+            ? const Center(child: CircularProgressIndicator(color: AppTheme.primaryOrange))
+            : TabBarView(
+          children: [
+            FriendsListTab(
+              friends: _friends,
+              onRefresh: _fetchAllData,
+              onUnfriend: _handleUnfriend,
+              onProfileTap: (id) {},
             ),
-          ),
-      ],
-    );
-  }
-
-  Widget _requestButton(FriendSearchResult u) {
-    if (u.friendshipStatus == 'ACCEPTED') {
-      return const Text('Friends ✓',
-          style: TextStyle(
-              color: Colors.green, fontWeight: FontWeight.bold));
-    }
-    if (u.friendshipStatus == 'PENDING') {
-      return const Text('Pending',
-          style: TextStyle(color: AppTheme.textLight));
-    }
-    return ElevatedButton(
-      style: ElevatedButton.styleFrom(
-        backgroundColor: AppTheme.primaryOrange,
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20)),
-        padding:
-        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      ),
-      onPressed: () => _sendRequest(u.userId),
-      child: const Text('Add',
-          style: TextStyle(
-              color: Colors.white, fontWeight: FontWeight.bold)),
-    );
-  }
-
-  Widget _sectionHeader(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8, top: 4),
-      child: Text(title,
-          style: const TextStyle(
-              color: AppTheme.textLight,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 1)),
-    );
-  }
-
-  Widget _userCard({
-    required String initial,
-    required String displayName,
-    required String subtitle,
-    required Widget trailing,
-  }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: AppTheme.darkCard,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white10, width: 1),
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 20,
-            backgroundColor: AppTheme.primaryOrange.withOpacity(0.1),
-            child: Text(initial,
-                style: const TextStyle(
-                    color: AppTheme.primaryOrange,
-                    fontWeight: FontWeight.bold)),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(displayName,
-                    style: const TextStyle(
-                        color: AppTheme.textWhite,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14)),
-                const SizedBox(height: 2),
-                Text(subtitle,
-                    style: const TextStyle(
-                        color: AppTheme.textLight, fontSize: 12),
-                    overflow: TextOverflow.ellipsis),
-              ],
+            RequestsListTab(
+              incoming: _incoming,
+              outgoing: _outgoing,
+              onRefresh: _fetchAllData,
+              onAccept: _handleAccept,
+              onDecline: _handleDecline,
+              onCancel: _handleCancelRequest,
+              onProfileTap: (id) {},
+              sectionHeaderBuilder: _buildSectionHeader,
             ),
-          ),
-          trailing,
-        ],
+            DiscoverTab(
+              results: _discoverItems,
+              isSearching: _isSearching,
+              isLoading: _isDiscoverLoading,
+              searchController: _searchController,
+              onSearchChanged: _onSearchChanged,
+              onSendRequest: _handleSendRequest,
+              onProfileTap: (id) {},
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -14,6 +14,10 @@ public class RunnerLocation {
     @Column("user_id")
     private String userId;
 
+    @Column("display_name")
+    @Transient
+    private String displayName;
+
     @Column("latitude")
     private double latitude;
 
@@ -32,13 +36,13 @@ public class RunnerLocation {
     @Column("updated_at")
     private Instant updatedAt;
 
-    @Transient
-    private String displayName;
-
     public RunnerLocation() {}
 
     public String getUserId() { return userId; }
     public void setUserId(String userId) { this.userId = userId; }
+
+    public String getDisplayName() { return displayName; }
+    public void setDisplayName(String displayName) { this.displayName = displayName; }
 
     public double getLatitude() { return latitude; }
     public void setLatitude(double latitude) { this.latitude = latitude; }
@@ -57,7 +61,4 @@ public class RunnerLocation {
 
     public Instant getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
-
-    public String getDisplayName() { return displayName; }
-    public void setDisplayName(String displayName) { this.displayName = displayName; }
 }

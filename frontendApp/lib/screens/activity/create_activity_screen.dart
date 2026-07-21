@@ -51,22 +51,19 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
 
       if (result != null && mounted) {
         final activityId = result['activityId'] as String?;
-        final activityLabel = _activityTypes
-            .firstWhere((t) => t['id'] == _selectedTypeId)['label'] as String;
 
         if (activityId == null) {
           _showSnackbar('Server error: no activity ID returned.', isError: true);
           return;
         }
 
-        // ✅ Navigate to ActiveRunScreen with the real activityId and userId
         final finished = await Navigator.pushReplacement(
           context,
           MaterialPageRoute(
             builder: (_) => ActiveRunScreen(
               activityId: activityId,
               userId: userId,
-              activityType: activityLabel,
+              activityTypeId: _selectedTypeId,
             ),
           ),
         );

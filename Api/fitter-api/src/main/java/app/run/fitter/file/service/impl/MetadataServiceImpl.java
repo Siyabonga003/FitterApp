@@ -57,7 +57,7 @@ public class MetadataServiceImpl implements MetadataService {
                 .flatMap(metadata ->
                         saveFileToStorage(filePart, metadata)
                                 .then(metadataRepository.save(metadata))
-                                .thenReturn(metadataMapper.toResponse(metadata))
+                                .map(metadataMapper::toResponse)
                 )
                 .doOnSuccess(metadataResponse -> log.info("File stored successfully: {}", metadataResponse.getMetadataId()))
                 .doOnError(error -> log.error("Failed to store file", error))

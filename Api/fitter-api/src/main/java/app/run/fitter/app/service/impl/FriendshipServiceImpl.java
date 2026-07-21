@@ -189,6 +189,7 @@ public class FriendshipServiceImpl implements FriendshipService {
                                 .body("Someone sent you a friend request")
                                 .isRead(false)
                                 .createdAt(ZonedDateTime.now())
+                                .isNewRecord(true)
                                 .build()
                 ))
                 .then();
@@ -208,6 +209,7 @@ public class FriendshipServiceImpl implements FriendshipService {
                                 .body("Your friend request was accepted")
                                 .isRead(false)
                                 .createdAt(ZonedDateTime.now())
+                                .isNewRecord(true)
                                 .build()
                 ))
                 .then();

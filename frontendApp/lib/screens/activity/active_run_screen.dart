@@ -1,60 +1,89 @@
 import 'dart:async';
-import 'dart:ui';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend_app/services/activity_service.dart';
 import 'package:frontend_app/theme/app_theme.dart';
+import 'package:frontend_app/widgets/map/app_tile_layer.dart';
+import 'package:frontend_app/widgets/map/heading_location_dot.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
-import '../../core/constants.dart';
-
-class ActiveRunScreen extends ConsumerStatefulWidget {
-  final String activityId;
+class ActiveRunScreen extends StatefulWidget {
   final String userId;
-  final String activityType;
+  final String activityId;
+  final int activityTypeId;
 
   const ActiveRunScreen({
-    required this.activityId,
-    required this.userId,
-    required this.activityType,
     super.key,
+    required this.userId,
+    required this.activityId,
+    required this.activityTypeId,
   });
 
   @override
-  ConsumerState<ActiveRunScreen> createState() => _ActiveRunScreenState();
+  State<ActiveRunScreen> createState() => _ActiveRunScreenState();
 }
 
-class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
-  // Map
+class _ActiveRunScreenState extends State<ActiveRunScreen> {
   final MapController _mapController = MapController();
-  bool _mapReady = false;
 
-  // GPS tracking
-  LatLng? _currentPosition;
-  final List<LatLng> _trail = [];
-  StreamSubscription<Position>? _positionStream;
-
-  // Stats
+  // Timer
   Timer? _timer;
-  int _secondsElapsed = 0;
-  double _distanceKm = 0.0;
-  int _calories = 0;
+  int _elapsedSeconds = 0;
   bool _isPaused = false;
   bool _isStopping = false;
 
-  // Pace calculation
-  final List<double> _recentSpeeds = []; // m/s readings for rolling avg
+  // GPS tracking
+  StreamSubscription<Position>? _positionStream;
+  final List<LatLng> _routePoints = [];
+  LatLng? _currentPosition;
+
+  // Metrics
+  double _distanceKm = 0;
+  int _calories = 0;
+  double _currentPaceSecPerKm = 0;
+  double _speedKmh = 0;
+
+  // Route update throttle
+  DateTime? _lastRouteUpdate;
+
+  String _activityLabel() {
+    switch (widget.activityTypeId) {
+      case 1:
+        return '🏃 Running';
+      case 2:
+        return '🚴 Cycling';
+      case 3:
+        return '🚶 Walking';
+      default:
+        return '💪 Activity';
+    }
+  }
 
   @override
   void initState() {
     super.initState();
-    _initLocation();
     _startTimer();
+    _startTracking();
   }
 
-  Future<void> _initLocation() async {
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _positionStream?.cancel();
+    super.dispose();
+  }
+
+  void _startTimer() {
+    _timer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!_isPaused && mounted) {
+        setState(() => _elapsedSeconds++);
+      }
+    });
+  }
+
+  void _startTracking() async {
     LocationPermission permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
@@ -62,67 +91,72 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
     if (permission == LocationPermission.denied ||
         permission == LocationPermission.deniedForever) return;
 
-    // Get initial position
-    final pos = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high);
-    if (mounted) {
-      setState(() {
-        _currentPosition = LatLng(pos.latitude, pos.longitude);
-        _trail.add(_currentPosition!);
-      });
-      if (_mapReady) _mapController.move(_currentPosition!, 16);
-    }
+    const settings = LocationSettings(
+      accuracy: LocationAccuracy.high,
+      distanceFilter: 5, // update every 5 meters
+    );
 
-    // Start listening for position updates
-    _positionStream = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 5, // Only update if moved 5+ meters
-      ),
-    ).listen((Position position) {
-      if (_isPaused || !mounted) return;
+    _positionStream =
+        Geolocator.getPositionStream(locationSettings: settings)
+            .listen((position) {
+          if (_isPaused || !mounted) return;
 
-      final newPoint = LatLng(position.latitude, position.longitude);
+          final newPoint =
+          LatLng(position.latitude, position.longitude);
 
-      // Calculate distance from last point
-      if (_currentPosition != null) {
-        final distanceMeters = Geolocator.distanceBetween(
-          _currentPosition!.latitude,
-          _currentPosition!.longitude,
-          newPoint.latitude,
-          newPoint.longitude,
-        );
-        _distanceKm += distanceMeters / 1000;
+          setState(() {
+            // Calculate distance from last point
+            if (_currentPosition != null) {
+              final dist = const Distance().as(
+                LengthUnit.Kilometer,
+                _currentPosition!,
+                newPoint,
+              );
+              _distanceKm += dist;
 
-        // Track speed for pace calculation (m/s)
-        if (position.speed > 0) {
-          _recentSpeeds.add(position.speed);
-          if (_recentSpeeds.length > 10) _recentSpeeds.removeAt(0);
-        }
+              // Pace: seconds per km
+              if (position.speed > 0.5) {
+                _speedKmh = position.speed * 3.6;
+                _currentPaceSecPerKm =
+                _speedKmh > 0 ? 3600 / _speedKmh : 0;
+              }
 
-        // Estimate calories: ~60 kcal per km (rough MET estimate)
-        _calories = (_distanceKm * 60).round();
-      }
+              // Calories: rough estimate ~60 kcal/km for running
+              _calories = (_distanceKm * 60).round();
+            }
 
-      setState(() {
-        _currentPosition = newPoint;
-        _trail.add(newPoint);
-      });
+            _currentPosition = newPoint;
+            _routePoints.add(newPoint);
+            _mapController.move(newPoint, 16);
+          });
 
-      if (_mapReady) _mapController.move(newPoint, 16);
-    });
+          // Send route update to backend every 10 seconds
+          final now = DateTime.now();
+          if (_lastRouteUpdate == null ||
+              now.difference(_lastRouteUpdate!).inSeconds >= 10) {
+            _lastRouteUpdate = now;
+            _sendRouteUpdate();
+          }
+        });
   }
 
-  void _startTimer() {
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!_isPaused) setState(() => _secondsElapsed++);
-    });
-  }
+  Future<void> _sendRouteUpdate() async {
+    if (_routePoints.isEmpty) return;
+    final routeJson = jsonEncode(_routePoints
+        .map((p) => {'lat': p.latitude, 'lng': p.longitude})
+        .toList());
 
-  void _togglePauseResume() {
-    setState(() {
-      _isPaused = !_isPaused;
-    });
+    await ActivityService.updateActivity(
+      widget.userId,
+      widget.activityId,
+      {
+        'routeGeoJson': routeJson,
+        'distanceKm': double.parse(_distanceKm.toStringAsFixed(3)),
+        'avgPaceSecPerKm': _currentPaceSecPerKm.round(),
+        'avgSpeedKmh': double.parse(_speedKmh.toStringAsFixed(2)),
+        'isLive': true,
+      },
+    );
   }
 
   Future<void> _stopActivity() async {
@@ -130,8 +164,11 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
     _positionStream?.cancel();
     setState(() => _isStopping = true);
 
+    // Final route update before ending
+    await _sendRouteUpdate();
+
     try {
-      final result = await ActivityService.endActivity(
+      await ActivityService.endActivity(
         widget.userId,
         widget.activityId,
         {
@@ -142,262 +179,266 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
       );
 
       if (mounted) {
-        await Future.delayed(const Duration(microseconds: 800));
-        Navigator.pop(context, result != null);
+        // Small delay so badge WebSocket event arrives before pop
+        await Future.delayed(const Duration(milliseconds: 800));
+        Navigator.pop(context, true);
       }
     } catch (e) {
+      print('Stop activity error: $e');
       if (mounted) Navigator.pop(context, false);
     }
   }
 
-  String _formatDuration(int totalSeconds) {
-    final h = totalSeconds ~/ 3600;
-    final m = (totalSeconds % 3600) ~/ 60;
-    final s = totalSeconds % 60;
-    return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+  String _formatTime(int seconds) {
+    final h = seconds ~/ 3600;
+    final m = (seconds % 3600) ~/ 60;
+    final s = seconds % 60;
+    if (h > 0) {
+      return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+    }
+    return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
   }
 
   String get _formattedPace {
-    if (_recentSpeeds.isEmpty || _distanceKm < 0.05) return '--:-- /km';
-    final avgSpeedMs = _recentSpeeds.reduce((a, b) => a + b) / _recentSpeeds.length;
-    if (avgSpeedMs <= 0) return '--:-- /km';
-    final secPerKm = (1000 / avgSpeedMs).round();
-    final pm = secPerKm ~/ 60;
-    final ps = secPerKm % 60;
-    return '$pm:${ps.toString().padLeft(2, '0')} /km';
-  }
-
-  String get _formattedDistance => _distanceKm.toStringAsFixed(2);
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    _positionStream?.cancel();
-    super.dispose();
+    if (_currentPaceSecPerKm <= 0) return "--'--\"";
+    final m = _currentPaceSecPerKm ~/ 60;
+    final s = (_currentPaceSecPerKm % 60).round();
+    return "$m'${s.toString().padLeft(2, '0')}\"";
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.darkBg,
-      body: Column(
+      body: Stack(
         children: [
-          Expanded(
-            flex: 4,
-            child: Stack(
-              children: [
-                FlutterMap(
-                  mapController: _mapController,
-                  options: MapOptions(
-                    initialCenter: _currentPosition ?? const LatLng(-12.8202, 28.2133),
-                    initialZoom: 16,
-                    onMapReady: () {
-                      setState(() => _mapReady = true);
-                      if (_currentPosition != null) {
-                        _mapController.move(_currentPosition!, 16);
-                      }
-                    },
-                  ),
-                  children: [
-                    TileLayer(
-                      urlTemplate:
-                      'https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}.png?api_key=${AppConstants.stadiaMapsApiKey}',
-                      userAgentPackageName: 'com.yourapp.frontend_app',
-                      maxNativeZoom: 18,
+          // Live map with route
+          FlutterMap(
+            mapController: _mapController,
+            options: MapOptions(
+              initialCenter: _currentPosition ??
+                  const LatLng(-12.8202, 28.2133),
+              initialZoom: 16,
+            ),
+            children: [
+              const AppTileLayer(),
+              // Drawn route
+              if (_routePoints.length >= 2)
+                PolylineLayer(
+                  polylines: [
+                    Polyline(
+                      points: _routePoints,
+                      strokeWidth: 4,
+                      color: AppTheme.primaryOrange,
+                      borderColor:
+                      AppTheme.primaryOrange.withOpacity(0.3),
+                      borderStrokeWidth: 8,
                     ),
-                    if (_trail.length >= 2)
-                      PolylineLayer(
-                        polylines: [
-                          Polyline(
-                            points: _trail,
-                            strokeWidth: 4.0,
-                            color: AppTheme.primaryOrange,
-                            borderColor: AppTheme.primaryOrange.withOpacity(0.3),
-                            borderStrokeWidth: 8.0,
-                          ),
-                        ],
-                      ),
-                    // Current position marker
-                    if (_currentPosition != null)
-                      MarkerLayer(
-                        markers: [
-                          Marker(
-                            point: _currentPosition!,
-                            width: 50,
-                            height: 50,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: const Color(0xFF39FF14).withOpacity(0.2),
-                                border: Border.all(
-                                    color: const Color(0xFF39FF14).withOpacity(0.5),
-                                    width: 1.5),
-                              ),
-                              child: Center(
-                                child: Container(
-                                  width: 16,
-                                  height: 16,
-                                  decoration: const BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: Color(0xFF39FF14),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
                   ],
                 ),
-                Positioned(
-                  top: 48,
-                  left: 16,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: AppTheme.darkCard.withOpacity(0.9),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.white10),
+              if (_currentPosition != null)
+                MarkerLayer(
+                  markers: [
+                    Marker(
+                      point: _currentPosition!,
+                      width: 90,
+                      height: 90,
+                      child: HeadingLocationDot(color: AppTheme.primaryOrange),
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
+                  ],
+                ),
+            ],
+          ),
+
+          // Top bar
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: Container(
+              padding: EdgeInsets.only(
+                top: MediaQuery.of(context).padding.top + 8,
+                left: 16,
+                right: 16,
+                bottom: 12,
+              ),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    AppTheme.darkBg.withOpacity(0.95),
+                    AppTheme.darkBg.withOpacity(0),
+                  ],
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    _activityLabel(),
+                    style: const TextStyle(
+                      color: AppTheme.textWhite,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                          color: Colors.red.withOpacity(0.4)),
+                    ),
+                    child: const Row(
                       children: [
-                        Container(
-                          width: 8,
-                          height: 8,
-                          decoration: const BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Color(0xFF39FF14),
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          'LIVE · ${widget.activityType.toUpperCase()}',
-                          style: const TextStyle(
-                              color: AppTheme.textWhite,
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 0.8),
-                        ),
+                        Icon(Icons.circle,
+                            color: Colors.red, size: 8),
+                        SizedBox(width: 4),
+                        Text('LIVE',
+                            style: TextStyle(
+                                color: Colors.red,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold)),
                       ],
                     ),
                   ),
-                ),
-                Positioned(
-                  top: 48,
-                  right: 16,
-                  child: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: AppTheme.darkCard.withOpacity(0.9),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white10),
-                    ),
-                    child: IconButton(
-                      icon: const Icon(Icons.my_location_rounded,
-                          color: AppTheme.textWhite, size: 18),
-                      onPressed: () {
-                        if (_currentPosition != null && _mapReady) {
-                          _mapController.move(_currentPosition!, 16);
-                        }
-                      },
-                    ),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
 
-          Expanded(
-            flex: 5,
+          // Bottom metrics + controls
+          Align(
+            alignment: Alignment.bottomCenter,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
-              decoration: const BoxDecoration(
-                color: AppTheme.darkBg,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+              decoration: BoxDecoration(
+                color: AppTheme.darkCard,
+                borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(28)),
+                border: Border(
+                    top: BorderSide(
+                        color: Colors.white.withOpacity(0.08),
+                        width: 1)),
+              ),
+              padding: EdgeInsets.only(
+                top: 20,
+                left: 24,
+                right: 24,
+                bottom: MediaQuery.of(context).padding.bottom + 20,
               ),
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Column(
+                  // Timer
+                  Text(
+                    _formatTime(_elapsedSeconds),
+                    style: const TextStyle(
+                      color: AppTheme.textWhite,
+                      fontSize: 52,
+                      fontWeight: FontWeight.w200,
+                      letterSpacing: 4,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Metrics row
+                  Row(
+                    mainAxisAlignment:
+                    MainAxisAlignment.spaceEvenly,
                     children: [
-                      Text(
-                        _isPaused ? '⏸️ SESSION PAUSED' : '⏱️ DURATION',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: _isPaused ? AppTheme.primaryOrange : AppTheme.textLight,
-                          letterSpacing: 1,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _formatDuration(_secondsElapsed),
-                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                          fontSize: 48,
-                          color: _isPaused ? AppTheme.textLight : AppTheme.textWhite,
-                          fontFeatures: [const FontFeature.tabularFigures()],
-                        ),
-                      ),
+                      _metricTile(
+                          '📏',
+                          '${_distanceKm.toStringAsFixed(2)} km',
+                          'Distance'),
+                      _divider(),
+                      _metricTile(
+                          '⚡', _formattedPace, 'Pace /km'),
+                      _divider(),
+                      _metricTile('🔥',
+                          '$_calories kcal', 'Calories'),
                     ],
                   ),
+                  const SizedBox(height: 24),
 
-                  const Divider(color: Colors.white10, height: 1),
-
+                  // Controls
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    mainAxisAlignment:
+                    MainAxisAlignment.spaceEvenly,
                     children: [
-                      _buildBigStat(context, '📏 DISTANCE', _formattedDistance, 'km'),
-                      _buildBigStat(context, '⚡ PACE', _formattedPace.split(' ').first, '/km'),
-                      _buildBigStat(context, '🔥 CALORIES', '$_calories', 'kcal'),
-                    ],
-                  ),
-
-                  const Divider(color: Colors.white10, height: 1),
-
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          style: OutlinedButton.styleFrom(
-                            side: BorderSide(
-                              color: _isPaused ? AppTheme.primaryOrange : Colors.white24,
-                              width: 1.5,
-                            ),
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16)),
+                      // Pause / Resume
+                      GestureDetector(
+                        onTap: () =>
+                            setState(() => _isPaused = !_isPaused),
+                        child: Container(
+                          width: 56,
+                          height: 56,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white.withOpacity(0.08),
+                            border: Border.all(
+                                color: Colors.white24, width: 1),
                           ),
-                          onPressed: _isStopping ? null : _togglePauseResume,
-                          child: Text(
-                            _isPaused ? 'RESUME' : 'PAUSE',
-                            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              color: _isPaused ? AppTheme.primaryOrange : AppTheme.textWhite,
-                            ),
+                          child: Icon(
+                            _isPaused
+                                ? Icons.play_arrow_rounded
+                                : Icons.pause_rounded,
+                            color: AppTheme.textWhite,
+                            size: 26,
                           ),
                         ),
                       ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppTheme.danger,
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16)),
+
+                      // Stop button
+                      GestureDetector(
+                        onTap: _isStopping ? null : _stopActivity,
+                        child: Container(
+                          width: 72,
+                          height: 72,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: _isStopping
+                                ? Colors.grey
+                                : AppTheme.primaryOrange,
+                            boxShadow: _isStopping
+                                ? null
+                                : [
+                              BoxShadow(
+                                color: AppTheme.primaryOrange
+                                    .withOpacity(0.4),
+                                blurRadius: 16,
+                                spreadRadius: 4,
+                              ),
+                            ],
                           ),
-                          onPressed: _isStopping ? null : _stopActivity,
                           child: _isStopping
                               ? const CircularProgressIndicator(
-                              valueColor:
-                              AlwaysStoppedAnimation<Color>(Colors.white))
-                              : Text(
-                            'STOP',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleLarge
-                                ?.copyWith(color: Colors.white),
+                              color: Colors.white,
+                              strokeWidth: 2)
+                              : const Icon(
+                            Icons.stop_rounded,
+                            color: Colors.white,
+                            size: 32,
                           ),
+                        ),
+                      ),
+
+                      // Lock screen placeholder
+                      Container(
+                        width: 56,
+                        height: 56,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.white.withOpacity(0.08),
+                          border: Border.all(
+                              color: Colors.white24, width: 1),
+                        ),
+                        child: const Icon(
+                          Icons.lock_outline_rounded,
+                          color: AppTheme.textLight,
+                          size: 22,
                         ),
                       ),
                     ],
@@ -411,36 +452,29 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
     );
   }
 
-  Widget _buildBigStat(BuildContext context, String title, String value, String unit) {
+  Widget _metricTile(String emoji, String value, String label) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Text(title,
-            style: Theme.of(context)
-                .textTheme
-                .bodySmall
-                ?.copyWith(color: AppTheme.textLight, fontSize: 11)),
-        const SizedBox(height: 6),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.baseline,
-          textBaseline: TextBaseline.alphabetic,
-          children: [
-            Text(
-              value,
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                fontSize: 28,
-                color: AppTheme.primaryOrange,
-                fontFeatures: [const FontFeature.tabularFigures()],
-              ),
-            ),
-            const SizedBox(width: 2),
-            Text(unit,
-                style: Theme.of(context)
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(color: AppTheme.textLight)),
-          ],
-        ),
+        Text(emoji, style: const TextStyle(fontSize: 18)),
+        const SizedBox(height: 4),
+        Text(value,
+            style: const TextStyle(
+                color: AppTheme.textWhite,
+                fontSize: 18,
+                fontWeight: FontWeight.bold)),
+        const SizedBox(height: 2),
+        Text(label,
+            style: const TextStyle(
+                color: AppTheme.textLight, fontSize: 11)),
       ],
     );
+  }
+
+  Widget _divider() {
+    return Container(
+        height: 40,
+        width: 1,
+        color: Colors.white.withOpacity(0.1));
   }
 }
