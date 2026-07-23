@@ -17,26 +17,49 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  late Future<List<Activity>> _activitiesFuture;
+  List<Activity> _activities = [];
+  bool _isLoading = true;
+  String? _error;
   int _unreadCount = 0;
 
   @override
   void initState() {
     super.initState();
-    _activitiesFuture = fetchFriendsFeed();
+    _loadFeed();
     _loadUnreadCount();
   }
 
-  Future<List<Activity>> fetchFriendsFeed() async {
-    final prefs = await SharedPreferences.getInstance();
-    final String? userId = prefs.getString('userId');
+  Future<void> _loadFeed() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
 
-    if (userId == null || userId.isEmpty) {
-      throw Exception('No userId found in session — please log in again');
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final String? userId = prefs.getString('userId');
+
+      if (userId == null || userId.isEmpty) {
+        throw Exception('No userId found in session — please log in again');
+      }
+
+      final List<dynamic> data = await ActivityService.getFriendsFeed(userId);
+      final activities = data.map((json) => Activity.fromJson(json)).toList();
+
+      if (mounted) {
+        setState(() {
+          _activities = activities;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = '$e'.replaceFirst('Exception: ', '');
+          _isLoading = false;
+        });
+      }
     }
-
-    final List<dynamic> data = await ActivityService.getFriendsFeed(userId);
-    return data.map((json) => Activity.fromJson(json)).toList();
   }
 
   Future<void> _loadUnreadCount() async {
@@ -60,6 +83,25 @@ class _HomeScreenState extends State<HomeScreen> {
       context,
       MaterialPageRoute(builder: (_) => const LeaderboardScreen()),
     );
+  }
+
+  void _updateActivity(
+      int index, {
+        int? likeCount,
+        int? cheerCount,
+        int? commentCount,
+        bool? currentUserLiked,
+        bool? currentUserCheered,
+      }) {
+    setState(() {
+      _activities[index] = _activities[index].copyWith(
+        likeCount: likeCount,
+        cheerCount: cheerCount,
+        commentCount: commentCount,
+        currentUserLiked: currentUserLiked,
+        currentUserCheered: currentUserCheered,
+      );
+    });
   }
 
   @override
@@ -157,87 +199,94 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
 
             Expanded(
-              child: FutureBuilder<List<Activity>>(
-                future: _activitiesFuture,
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(
-                      child: CircularProgressIndicator(
-                        valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryNeon),
+              child: _isLoading
+                  ? const Center(
+                child: CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryNeon),
+                ),
+              )
+                  : _error != null
+                  ? Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.wifi_off_rounded, size: 48, color: AppTheme.textLight),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Could not fetch live feed',
+                      style: TextStyle(
+                        color: isDark ? AppTheme.textWhite : AppTheme.textDark,
+                        fontWeight: FontWeight.bold,
                       ),
-                    );
-                  }
-
-                  if (snapshot.hasError) {
-                    return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.wifi_off_rounded, size: 48, color: AppTheme.textLight),
-                          const SizedBox(height: 12),
-                          Text(
-                            'Could not fetch live feed',
-                            style: TextStyle(
-                              color: isDark ? AppTheme.textWhite : AppTheme.textDark,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            '${snapshot.error}',
-                            style: const TextStyle(color: AppTheme.textLight, fontSize: 12),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 16),
-                          ElevatedButton(
-                            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryNeon),
-                            onPressed: () => setState(() {
-                              _activitiesFuture = fetchFriendsFeed();
-                            }),
-                            child: const Text(
-                              'Retry Connection',
-                              style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }
-
-                  final activities = snapshot.data ?? [];
-                  if (activities.isEmpty) {
-                    return const Center(
-                      child: Text('No activity from your friends yet.', style: TextStyle(color: AppTheme.textLight)),
-                    );
-                  }
-
-                  return RefreshIndicator(
-                    color: AppTheme.primaryNeon,
-                    onRefresh: () async => setState(() {
-                      _activitiesFuture = fetchFriendsFeed();
-                    }),
-                    child: ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                      itemCount: activities.length,
-                      itemBuilder: (context, index) {
-                        final item = activities[index];
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 16.0),
-                          child: ActivityCard(
-                            username: item.username,
-                            profilePicUrl: item.profilePicUrl,
-                            timeAgo: item.timeAgo,
-                            activityTitle: item.activityTitle,
-                            distance: item.distance,
-                            duration: item.duration,
-                            pace: item.pace,
-                            routePoints: item.routePoints,
-                          ),
-                        );
-                      },
                     ),
-                  );
-                },
+                    const SizedBox(height: 8),
+                    Text(
+                      _error!,
+                      style: const TextStyle(color: AppTheme.textLight, fontSize: 12),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryNeon),
+                      onPressed: _loadFeed,
+                      child: const Text(
+                        'Retry Connection',
+                        style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
+              )
+                  : _activities.isEmpty
+                  ? const Center(
+                child: Text('No activity from your friends yet.', style: TextStyle(color: AppTheme.textLight)),
+              )
+                  : RefreshIndicator(
+                color: AppTheme.primaryNeon,
+                onRefresh: _loadFeed,
+                child: ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  itemCount: _activities.length,
+                  itemBuilder: (context, index) {
+                    final item = _activities[index];
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 16.0),
+                      child: ActivityCard(
+                        key: ValueKey(item.activityId),
+                        activityId: item.activityId,
+                        username: item.username,
+                        profilePicUrl: item.profilePicUrl,
+                        timeAgo: item.timeAgo,
+                        activityTitle: item.activityTitle,
+                        distance: item.distance,
+                        duration: item.duration,
+                        pace: item.pace,
+                        routePoints: item.routePoints,
+                        likeCount: item.likeCount,
+                        cheerCount: item.cheerCount,
+                        commentCount: item.commentCount,
+                        currentUserLiked: item.currentUserLiked,
+                        currentUserCheered: item.currentUserCheered,
+                        onChanged: ({
+                          likeCount,
+                          cheerCount,
+                          commentCount,
+                          currentUserLiked,
+                          currentUserCheered,
+                        }) {
+                          _updateActivity(
+                            index,
+                            likeCount: likeCount,
+                            cheerCount: cheerCount,
+                            commentCount: commentCount,
+                            currentUserLiked: currentUserLiked,
+                            currentUserCheered: currentUserCheered,
+                          );
+                        },
+                      ),
+                    );
+                  },
+                ),
               ),
             ),
           ],
@@ -259,9 +308,7 @@ class _HomeScreenState extends State<HomeScreen> {
             MaterialPageRoute(builder: (_) => const CreateActivityScreen()),
           );
           if (created == true) {
-            setState(() {
-              _activitiesFuture = fetchFriendsFeed();
-            });
+            _loadFeed();
           }
         },
       ),

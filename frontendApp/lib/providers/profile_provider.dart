@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend_app/models/activity_stats_model.dart';
 import 'package:frontend_app/models/activity_model.dart';
 import 'package:frontend_app/services/auth_service.dart';
+import 'package:frontend_app/core/constants.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 
@@ -10,12 +11,14 @@ class ProfileState {
   final ActivityStats stats;
   final List<Activity> recentActivities;
   final List<int> activeDaysThisWeek; // 1=Mon ... 7=Sun
+  final String? profilePictureUrl;
   final bool isLoading;
 
   ProfileState({
     required this.stats,
     required this.recentActivities,
     required this.activeDaysThisWeek,
+    this.profilePictureUrl,
     this.isLoading = false,
   });
 
@@ -23,12 +26,14 @@ class ProfileState {
     ActivityStats? stats,
     List<Activity>? recentActivities,
     List<int>? activeDaysThisWeek,
+    String? profilePictureUrl,
     bool? isLoading,
   }) {
     return ProfileState(
       stats: stats ?? this.stats,
       recentActivities: recentActivities ?? this.recentActivities,
       activeDaysThisWeek: activeDaysThisWeek ?? this.activeDaysThisWeek,
+      profilePictureUrl: profilePictureUrl ?? this.profilePictureUrl,
       isLoading: isLoading ?? this.isLoading,
     );
   }
@@ -55,16 +60,18 @@ class ProfileNotifier extends Notifier<ProfileState> {
     if (token == null || userId == null) return;
 
     final headers = {'Authorization': 'Bearer $token'};
-    
+
     final results = await Future.wait([
       http.get(Uri.parse('$_base/user/$userId/stats'), headers: headers),
       http.get(Uri.parse('$_base/user/$userId'), headers: headers),
       http.get(Uri.parse('$_base/user/$userId/active-days'), headers: headers),
+      http.get(Uri.parse('${AppConstants.backendBaseUrl}/api/v1/users/me/$userId'), headers: headers),
     ]);
 
     final statsRes = results[0];
     final activitiesRes = results[1];
     final daysRes = results[2];
+    final userRes = results[3];
 
     final stats = statsRes.statusCode == 200
         ? ActivityStats.fromJson(jsonDecode(statsRes.body))
@@ -82,10 +89,15 @@ class ProfileNotifier extends Notifier<ProfileState> {
         .toList()
         : <int>[];
 
+    final profilePictureUrl = userRes.statusCode == 200
+        ? jsonDecode(userRes.body)['profilePictureUrl'] as String?
+        : null;
+
     state = ProfileState(
       stats: stats,
       recentActivities: activities,
       activeDaysThisWeek: activeDays,
+      profilePictureUrl: profilePictureUrl,
       isLoading: false,
     );
   }

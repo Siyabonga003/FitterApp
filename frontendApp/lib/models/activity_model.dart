@@ -28,6 +28,11 @@ class Activity {
   final bool isLive;
   final String? routeGeoJson;
   final List<RoutePoint> routePoints;
+  final int likeCount;
+  final int cheerCount;
+  final int commentCount;
+  final bool currentUserLiked;
+  final bool currentUserCheered;
 
   Activity({
     required this.activityId,
@@ -43,6 +48,11 @@ class Activity {
     required this.isLive,
     required this.routeGeoJson,
     required this.routePoints,
+    required this.likeCount,
+    required this.cheerCount,
+    required this.commentCount,
+    required this.currentUserLiked,
+    required this.currentUserCheered,
   });
 
   factory Activity.fromJson(Map<String, dynamic> json) {
@@ -99,9 +109,7 @@ class Activity {
               .map((p) => RoutePoint.fromJson(p))
               .toList();
         }
-      } catch (_) {
-        // malformed or unexpected geojson shape — leave points empty, UI falls back gracefully
-      }
+      } catch (_) {}
     }
 
     return Activity(
@@ -118,6 +126,11 @@ class Activity {
       isLive: json['isLive'] ?? false,
       routeGeoJson: rawRouteGeoJson,
       routePoints: parsedPoints,
+      likeCount: (json['likeCount'] as num?)?.toInt() ?? 0,
+      cheerCount: (json['cheerCount'] as num?)?.toInt() ?? 0,
+      commentCount: (json['commentCount'] as num?)?.toInt() ?? 0,
+      currentUserLiked: json['currentUserLiked'] ?? false,
+      currentUserCheered: json['currentUserCheered'] ?? false,
     );
   }
 
@@ -128,5 +141,36 @@ class Activity {
       case 3: return ' Walking';
       default: return ' Workout';
     }
+  }
+}
+
+extension ActivityCopyWith on Activity {
+  Activity copyWith({
+    int? likeCount,
+    int? cheerCount,
+    int? commentCount,
+    bool? currentUserLiked,
+    bool? currentUserCheered,
+  }) {
+    return Activity(
+      activityId: activityId,
+      userId: userId,
+      username: username,
+      profilePicUrl: profilePicUrl,
+      timeAgo: timeAgo,
+      activityTitle: activityTitle,
+      distance: distance,
+      duration: duration,
+      pace: pace,
+      activityTypeId: activityTypeId,
+      isLive: isLive,
+      routeGeoJson: routeGeoJson,
+      routePoints: routePoints,
+      likeCount: likeCount ?? this.likeCount,
+      cheerCount: cheerCount ?? this.cheerCount,
+      commentCount: commentCount ?? this.commentCount,
+      currentUserLiked: currentUserLiked ?? this.currentUserLiked,
+      currentUserCheered: currentUserCheered ?? this.currentUserCheered,
+    );
   }
 }

@@ -6,6 +6,8 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.Id;
+import org.springframework.data.annotation.Transient;
+import org.springframework.data.domain.Persistable;
 import org.springframework.data.relational.core.mapping.Table;
 
 import java.time.ZonedDateTime;
@@ -16,7 +18,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Table(schema = "social", name = "feed_posts")
-public class FeedPosts {
+public class FeedPosts implements Persistable<UUID> {
     @Id
     private UUID postId;
     private UUID userId;
@@ -28,4 +30,17 @@ public class FeedPosts {
     @CreatedDate
     private ZonedDateTime createdAt;
     private ZonedDateTime updatedAt;
+
+    @Transient
+    private boolean isNewRecord;
+
+    @Override
+    public UUID getId() {
+        return postId;
+    }
+
+    @Override
+    public boolean isNew() {
+        return isNewRecord;
+    }
 }

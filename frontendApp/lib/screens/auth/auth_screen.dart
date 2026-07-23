@@ -5,7 +5,6 @@ import 'package:frontend_app/services/auth_service.dart';
 import 'package:frontend_app/models/auth_model.dart';
 import 'package:frontend_app/services/signup_service.dart';
 
-// Sub-view imports
 import 'landing_view.dart';
 import 'sign_in_form_view.dart';
 import 'sign_up_form_view.dart';
@@ -21,7 +20,6 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
   final signInFormKey = GlobalKey<FormState>();
   final signUpFormKey = GlobalKey<FormState>();
 
-  // Controllers
   final signInEmailController = TextEditingController();
   final signInPasswordController = TextEditingController();
   final signUpFirstNameController = TextEditingController();
@@ -30,7 +28,6 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
   final signUpEmailController = TextEditingController();
   final signUpPasswordController = TextEditingController();
 
-  // State values passed to child widgets
   String? selectedGender;
   DateTime? selectedBirthDate;
   late TabController _tabController;

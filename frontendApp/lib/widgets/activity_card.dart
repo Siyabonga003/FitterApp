@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:frontend_app/theme/app_theme.dart';
 import 'package:frontend_app/models/activity_model.dart';
+import 'package:frontend_app/services/social_service.dart';
 import 'package:frontend_app/utils/image_url.dart';
+import 'package:frontend_app/widgets/comments_sheet.dart';
 
-class ActivityCard extends StatelessWidget {
+class ActivityCard extends StatefulWidget {
+  final String activityId;
   final String username;
   final String? profilePicUrl;
   final String timeAgo;
@@ -12,8 +15,26 @@ class ActivityCard extends StatelessWidget {
   final String duration;
   final String pace;
   final List<RoutePoint> routePoints;
+  final int likeCount;
+  final int cheerCount;
+  final int commentCount;
+  final bool currentUserLiked;
+  final bool currentUserCheered;
+
+  /// Reports reaction/comment changes back up to the parent so the underlying
+  /// Activity list stays correct — without this, ListView.builder disposing and
+  /// recreating this card's State on scroll would reset counts back to whatever
+  /// was originally fetched.
+  final void Function({
+  int? likeCount,
+  int? cheerCount,
+  int? commentCount,
+  bool? currentUserLiked,
+  bool? currentUserCheered,
+  })? onChanged;
 
   const ActivityCard({
+    required this.activityId,
     required this.username,
     this.profilePicUrl,
     required this.timeAgo,
@@ -22,12 +43,63 @@ class ActivityCard extends StatelessWidget {
     required this.duration,
     required this.pace,
     required this.routePoints,
+    required this.likeCount,
+    required this.cheerCount,
+    required this.commentCount,
+    required this.currentUserLiked,
+    required this.currentUserCheered,
+    this.onChanged,
     super.key,
   });
 
   @override
+  State<ActivityCard> createState() => _ActivityCardState();
+}
+
+class _ActivityCardState extends State<ActivityCard> {
+  bool _isLikeBusy = false;
+  bool _isCheerBusy = false;
+
+  Future<void> _toggleLike() async {
+    setState(() => _isLikeBusy = true);
+    final result = await ActivitySocialService.toggleReaction(widget.activityId, 'LIKE');
+    if (result != null) {
+      widget.onChanged?.call(
+        likeCount: result.likeCount,
+        currentUserLiked: result.currentUserLiked,
+      );
+    }
+    if (mounted) setState(() => _isLikeBusy = false);
+  }
+
+  Future<void> _toggleCheer() async {
+    setState(() => _isCheerBusy = true);
+    final result = await ActivitySocialService.toggleReaction(widget.activityId, 'CHEER');
+    if (result != null) {
+      widget.onChanged?.call(
+        cheerCount: result.cheerCount,
+        currentUserCheered: result.currentUserCheered,
+      );
+    }
+    if (mounted) setState(() => _isCheerBusy = false);
+  }
+
+  void _openComments() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => CommentsSheet(
+        activityId: widget.activityId,
+        onCommentAdded: () => widget.onChanged?.call(commentCount: widget.commentCount + 1),
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final resolvedPicUrl = resolveImageUrl(widget.profilePicUrl);
 
     return Card(
       elevation: 0,
@@ -45,12 +117,10 @@ class ActivityCard extends StatelessWidget {
               children: [
                 CircleAvatar(
                   backgroundColor: AppTheme.primaryNeon.withOpacity(0.1),
-                  backgroundImage: resolveImageUrl(profilePicUrl) != null
-                      ? NetworkImage(resolveImageUrl(profilePicUrl)!)
-                      : null,
-                  child: (profilePicUrl == null || profilePicUrl!.isEmpty)
+                  backgroundImage: resolvedPicUrl != null ? NetworkImage(resolvedPicUrl) : null,
+                  child: resolvedPicUrl == null
                       ? Text(
-                    username.isNotEmpty ? username[0].toUpperCase() : 'F',
+                    widget.username.isNotEmpty ? widget.username[0].toUpperCase() : 'F',
                     style: const TextStyle(color: AppTheme.primaryNeon, fontWeight: FontWeight.bold),
                   )
                       : null,
@@ -59,32 +129,46 @@ class ActivityCard extends StatelessWidget {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(username, style: Theme.of(context).textTheme.titleLarge?.copyWith(color: isDark ? AppTheme.textWhite : AppTheme.textDark)),
-                    Text(timeAgo, style: Theme.of(context).textTheme.bodySmall),
+                    Text(widget.username,
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(color: isDark ? AppTheme.textWhite : AppTheme.textDark)),
+                    Text(widget.timeAgo, style: Theme.of(context).textTheme.bodySmall),
                   ],
                 ),
               ],
             ),
             const SizedBox(height: 16),
-            Text(activityTitle, style: Theme.of(context).textTheme.titleLarge?.copyWith(color: isDark ? AppTheme.textWhite : AppTheme.textDark)),
+            Text(widget.activityTitle,
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(color: isDark ? AppTheme.textWhite : AppTheme.textDark)),
             const SizedBox(height: 12),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _buildMetric(context, 'Distance', distance),
-                _buildMetric(context, 'Time', duration),
-                _buildMetric(context, 'Pace', pace),
+                _buildMetric(context, 'Distance', widget.distance),
+                _buildMetric(context, 'Time', widget.duration),
+                _buildMetric(context, 'Pace', widget.pace),
               ],
             ),
             const SizedBox(height: 16),
-            ActivityMapSnapshot(isDark: isDark, routePoints: routePoints),
+            ActivityMapSnapshot(isDark: isDark, routePoints: widget.routePoints),
             const SizedBox(height: 16),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _buildActionButton(Icons.favorite_border_rounded, '25', context),
-                _buildActionButton(Icons.chat_bubble_outline_rounded, '8', context),
-                _buildActionButton(Icons.workspace_premium_outlined, 'Cheer', context),
+                _buildToggleButton(
+                  icon: widget.currentUserLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                  label: '${widget.likeCount}',
+                  isActive: widget.currentUserLiked,
+                  isBusy: _isLikeBusy,
+                  onTap: _toggleLike,
+                ),
+                _buildToggleButton(
+                  icon: Icons.emoji_emotions_outlined,
+                  label: '${widget.cheerCount}',
+                  isActive: widget.currentUserCheered,
+                  isBusy: _isCheerBusy,
+                  onTap: _toggleCheer,
+                ),
+                _buildCommentButton(),
               ],
             ),
           ],
@@ -104,13 +188,46 @@ class ActivityCard extends StatelessWidget {
     );
   }
 
-  Widget _buildActionButton(IconData icon, String label, BuildContext context) {
-    return Row(
-      children: [
-        Icon(icon, size: 20, color: AppTheme.textLight),
-        const SizedBox(width: 4),
-        Text(label, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppTheme.textLight)),
-      ],
+  Widget _buildToggleButton({
+    required IconData icon,
+    required String label,
+    required bool isActive,
+    required bool isBusy,
+    required VoidCallback onTap,
+  }) {
+    final color = isActive ? AppTheme.primaryNeon : AppTheme.textLight;
+    return InkWell(
+      onTap: isBusy ? null : onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        child: Row(
+          children: [
+            isBusy
+                ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: color))
+                : Icon(icon, size: 20, color: color),
+            const SizedBox(width: 4),
+            Text(label, style: TextStyle(color: color)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCommentButton() {
+    return InkWell(
+      onTap: _openComments,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        child: Row(
+          children: [
+            const Icon(Icons.chat_bubble_outline_rounded, size: 20, color: AppTheme.textLight),
+            const SizedBox(width: 4),
+            Text('${widget.commentCount}', style: const TextStyle(color: AppTheme.textLight)),
+          ],
+        ),
+      ),
     );
   }
 }
